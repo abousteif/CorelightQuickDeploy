@@ -1,4 +1,4 @@
-// Corelight Azure Deployer — backend.
+// Corelight Quick Deploy — backend.
 // Binds to 127.0.0.1 ONLY (never exposed). Serves the API and, in production, the built UI.
 // M2 scope: preflight + a real deploy pipeline. POST /api/deploy creates a per-run
 // workspace from the form; GET /api/deploy/stream?runId attaches an SSE channel that
@@ -20,7 +20,7 @@ const HOST = "127.0.0.1"; // localhost only — security requirement.
 const app = express();
 app.use(express.json({ limit: "10mb" })); // room for base64 PEM / license uploads
 
-app.get("/api/health", (_req, res) => res.json({ ok: true, service: "corelight-azure-deployer", version: "0.1.0" }));
+app.get("/api/health", (_req, res) => res.json({ ok: true, service: "corelightquickdeploy", version: "0.1.0" }));
 
 app.get("/api/preflight", async (_req, res) => {
   try {
@@ -113,6 +113,6 @@ if (process.env.SERVE_STATIC === "1") {
 }
 
 app.listen(PORT, HOST, () => {
-  console.log(`[corelight-azure-deployer] API listening on http://${HOST}:${PORT}`);
+  console.log(`[corelightquickdeploy] API listening on http://${HOST}:${PORT}`);
   if (process.env.SERVE_STATIC !== "1") console.log("[dev] UI served by Vite on http://127.0.0.1:5173 (proxying /api here)");
 });

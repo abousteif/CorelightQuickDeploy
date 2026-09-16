@@ -1,8 +1,8 @@
 {
-  "name": "corelight-azure-deployer",
+  "name": "corelightquickdeploy",
   "version": "0.1.0",
   "private": true,
-  "description": "Local one-button web app for Corelight SEs to deploy a Fleet Manager + N sensors into Azure.",
+  "description": "Local one-button web app for Corelight SEs to deploy a Fleet Manager + N sensors into the cloud (Azure today; AWS planned).",
   "type": "module",
   "main": "electron/main.cjs",
   "scripts": {
@@ -28,7 +28,7 @@
   },
   "build": {
     "appId": "io.corelight.quickdeploy",
-    "productName": "Corelight Azure Deployer",
+    "productName": "Corelight Quick Deploy",
     "asar": false,
     "files": [
       "electron/**",

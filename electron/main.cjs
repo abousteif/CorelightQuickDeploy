@@ -51,7 +51,7 @@ async function createWindow() {
   const win = new BrowserWindow({
     width: 1240,
     height: 920,
-    title: "Corelight Azure Deployer",
+    title: "Corelight Quick Deploy",
     webPreferences: { contextIsolation: true, nodeIntegration: false },
   });
   // Open external links (e.g. the Azure device-login page) in the system browser.

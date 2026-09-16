@@ -28,7 +28,7 @@ async function main() {
     await run("npm", ["--prefix", "web", "run", "build"]);
   }
 
-  console.log(`Starting Corelight Azure Deployer on http://127.0.0.1:${PORT} ...`);
+  console.log(`Starting Corelight Quick Deploy on http://127.0.0.1:${PORT} ...`);
   const server = spawn("node", [join("server", "index.js")], {
     cwd: root,
     stdio: "inherit",

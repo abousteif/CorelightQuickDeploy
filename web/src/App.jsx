@@ -169,7 +169,7 @@ export default function App() {
     <div className="app">
       <header className="topbar">
         <div>
-          <h1>Corelight Azure Deployer</h1>
+          <h1>Corelight Quick Deploy</h1>
           <p className="muted">One-button Fleet Manager + sensor deployment · <span className="badge">M5 · complete</span></p>
         </div>
       </header>

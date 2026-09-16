@@ -1,7 +1,8 @@
-# Corelight Azure Deployer
+# Corelight Quick Deploy
 
 A **local, one-button web app** for Corelight SEs to deploy a Fleet Manager + N Software
-Sensors into Azure. Runs entirely on your machine (bound to `127.0.0.1`), signs in to Azure
+Sensors into the cloud. Azure is supported today; the UI is already structured for additional
+providers (AWS is a visible placeholder). Runs entirely on your machine (bound to `127.0.0.1`), signs in to Azure
 from the browser (no CLI), and streams live progress. Ships either as source you run with
 Node, or as a **double-clickable desktop app** (`.dmg` / `.exe` / `.AppImage`) that bundles
 Node + Terraform and needs nothing preinstalled.
