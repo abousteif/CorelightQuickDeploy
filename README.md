@@ -4,11 +4,11 @@ A **local, one-button web app** for Corelight SEs to deploy a Fleet Manager + N 
 Sensors into Azure. Runs entirely on your machine (bound to `127.0.0.1`), inherits your
 `az login` session, and streams live progress in the browser.
 
-> **Status: M2 (infrastructure).** The UI, preflight, and live-log streaming work, and the
-> Deploy button now runs real Terraform against your subscription — it provisions a new VNet,
-> subnet, NSG, an optional Fleet VM, and N sensor VMs, streaming `terraform` output live.
-> The Corelight bring-up (Fleet install, per-sensor token minting, sensor pairing) lands in M3–M4,
-> so the PEM, repo-token, and license fields are collected but not used yet.
+> **Status: M4 (end-to-end, deploy-Fleet path).** One button provisions the infra (new VNet,
+> subnet, NSG, Fleet VM + N sensor VMs), brings up the Fleet Manager (install → PEM → start →
+> admin), then for each sensor mints a pairing token, installs `corelight-sensor`, writes
+> `corelightctl.yaml`, and deploys + pairs it — all streamed live. Pairing sensors to an
+> **existing** Fleet (deploy-Fleet unchecked) is still M5.
 
 ## Prerequisites (any OS — Windows, macOS, Linux)
 - **Node.js** LTS (18+)
@@ -58,8 +58,8 @@ that resource group (Azure Portal or `az group delete -n cqd-<runid>-rg`), or ru
 - **M1** ✅ scaffold + preflight + UI shell + live-log channel
 - **M2** ✅ Terraform module (new VNet + optional Fleet + N sensors) driven from the form, per-run
   workspace, live `terraform` streaming, results card
-- **M3** Fleet bring-up: install → PEM → start → create admin
-- **M4** per-sensor token minting + pairing + verify → **end-to-end one button**
-- **M5** existing-Fleet path + polish
+- **M3** ✅ Fleet bring-up: install → PEM → start → create admin
+- **M4** ✅ per-sensor token minting + pairing + verify → **end-to-end one button** (deploy-Fleet path)
+- **M5** existing-Fleet path (operator-supplied Fleet address + creds) + polish
 
 *Teardown is intentionally SE-managed (delete the `cqd-<runid>-rg` resource group) — there is no Destroy button.*
