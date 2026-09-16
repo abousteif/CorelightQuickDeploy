@@ -10,6 +10,7 @@ import { dirname, join } from "node:path";
 import { mkdirSync, cpSync, writeFileSync, readFileSync, existsSync } from "node:fs";
 import { randomBytes } from "node:crypto";
 import readline from "node:readline";
+import { bringUpFleet } from "./fleet.js";
 
 const WIN = process.platform === "win32";
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -76,13 +77,33 @@ export function createRun(form) {
   mkdirSync(tfDir, { recursive: true });
   mkdirSync(sshDir, { recursive: true });
 
+  // Secrets go to the gitignored run dir, never into logs. PEM (base64) → fleet.pem.
+  const secrets = {
+    fleetRepoToken: form.fleetRepoToken || "",
+    communityString: form.communityString || "corelight",
+    sensorRepoToken: form.sensorRepoToken || "",
+    pemPath: null,
+    licensePath: null,
+  };
+  if (form.fleetPemB64) {
+    secrets.pemPath = join(dir, "fleet.pem");
+    writeFileSync(secrets.pemPath, Buffer.from(form.fleetPemB64, "base64"));
+  }
+  if (form.sensorLicenseB64) {
+    secrets.licensePath = join(dir, "sensor.license");
+    writeFileSync(secrets.licensePath, Buffer.from(form.sensorLicenseB64, "base64"));
+  }
+
+  // Keep the base64 blobs out of the retained form (large + sensitive).
+  const { fleetPemB64, sensorLicenseB64, ...formRest } = form;
   const run = {
     id,
     namePrefix,
     dir,
     tfDir,
     sshDir,
-    form: { ...form, namePrefix },
+    secrets,
+    form: { ...formRest, namePrefix },
     dryRun: !!form.dryRun,
     status: "created",
     started: false,
@@ -181,9 +202,22 @@ async function execute(run) {
 
     // 4. capture outputs
     run.outputs = await readOutputs(run);
-    emit(run, "results", run.outputs || {});
     emit(run, "log", { level: "success", line: "Infrastructure ready." });
-    // NOTE (M3/M4): Fleet install + sensor pairing hook in here, then a final "done".
+
+    // 5. Fleet bring-up (M3): install + PEM + start + admin, over SSH.
+    if (run.form.deployFleet !== false) {
+      await bringUpFleet(run, emit);
+    } else {
+      emit(run, "log", { level: "info", line: "Skipping Fleet bring-up (using an existing Fleet)." });
+    }
+
+    // NOTE (M4): sensor install + per-sensor token minting + pairing hook in here.
+    const results = { ...(run.outputs || {}) };
+    if (run.fleetAdmin) {
+      results.fleet_admin_user = run.fleetAdmin.user;
+      results.fleet_admin_password = run.fleetAdmin.password;
+    }
+    emit(run, "results", results);
     run.status = "complete";
     emit(run, "status", { phase: "complete" });
   } catch (e) {

@@ -16,6 +16,8 @@ export default function Results({ data }) {
             {data.fleet_ui_url && <li><span>UI</span><a href={data.fleet_ui_url} target="_blank" rel="noreferrer">{data.fleet_ui_url}</a></li>}
             <li><span>Public IP</span><code>{data.fleet_public_ip}</code></li>
             <li><span>Private IP</span><code>{data.fleet_private_ip}</code></li>
+            {data.fleet_admin_user && <li><span>Admin user</span><code>{data.fleet_admin_user}</code></li>}
+            {data.fleet_admin_password && <li><span>Admin password</span><code>{data.fleet_admin_password}</code></li>}
           </ul>
         </div>
       )}

@@ -88,7 +88,7 @@ export default function DeployForm({ form, setField, onDeploy, running }) {
           {running ? "Working…" : "Deploy"}
         </button>
       </div>
-      <p className="muted small">M2: <strong>Preview</strong> runs <code>terraform plan</code> (safe, no resources). <strong>Deploy</strong> builds the VNet, NSG, optional Fleet VM and sensor VMs in Azure. Fleet install + sensor pairing arrive in M3/M4; the PEM, tokens and license fields aren’t used yet.</p>
+      <p className="muted small">M3: <strong>Preview</strong> runs <code>terraform plan</code> (safe, no resources). <strong>Deploy</strong> builds the VNet, NSG, Fleet VM + sensor VMs, then brings up the Fleet Manager (install → PEM → start → admin) over SSH and shows the admin login. Sensor install + pairing arrive in M4 — the sensor repo token and license aren’t used yet.</p>
     </form>
   );
 }

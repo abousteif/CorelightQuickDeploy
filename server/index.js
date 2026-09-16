@@ -17,7 +17,7 @@ const PORT = Number(process.env.PORT || 8787);
 const HOST = "127.0.0.1"; // localhost only — security requirement.
 
 const app = express();
-app.use(express.json({ limit: "1mb" }));
+app.use(express.json({ limit: "10mb" })); // room for base64 PEM / license uploads
 
 app.get("/api/health", (_req, res) => res.json({ ok: true, service: "corelight-azure-deployer", version: "0.1.0" }));
 
@@ -37,6 +37,11 @@ app.post("/api/deploy", (req, res) => {
   const n = Number(form.sensorCount);
   if (!Number.isInteger(n) || n < 0 || n > 50) return res.status(400).json({ error: "sensorCount must be 0–50" });
   if (form.deployFleet === false && n === 0) return res.status(400).json({ error: "Nothing to deploy: no Fleet and 0 sensors" });
+  // A real Fleet bring-up needs the product PEM + repo token; catch it before creating infra.
+  if (!form.dryRun && form.deployFleet !== false) {
+    if (!form.fleetPemB64) return res.status(400).json({ error: "Deploy Fleet requires the Fleet PEM (cert + license)" });
+    if (!form.fleetRepoToken) return res.status(400).json({ error: "Deploy Fleet requires the Fleet repo token" });
+  }
   try {
     const { id, namePrefix } = createRun(form);
     res.json({ runId: id, namePrefix });

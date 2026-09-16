@@ -52,6 +52,16 @@ export default function App() {
 
   const addLine = (l) => setLines((prev) => [...prev, { ts: now(), ...l }]);
 
+  // Read a File as base64 (no data: prefix) for JSON upload.
+  const fileToB64 = (file) =>
+    new Promise((resolve) => {
+      if (!file) return resolve(null);
+      const fr = new FileReader();
+      fr.onload = () => resolve(String(fr.result).split(",")[1] || null);
+      fr.onerror = () => resolve(null);
+      fr.readAsDataURL(file);
+    });
+
   // dryRun=true → terraform plan only (safe preview, no resources created).
   const onDeploy = async (dryRun = false) => {
     setLines([]);
@@ -60,9 +70,12 @@ export default function App() {
     setPhase("starting");
     addLine({ level: "info", line: dryRun ? "Starting preview (terraform plan)…" : "Starting deployment…" });
 
-    // 1. POST the form to create a run.
+    // 1. POST the form to create a run. Uploads travel as base64 (plan skips them).
     let runId;
     try {
+      const [fleetPemB64, sensorLicenseB64] = dryRun
+        ? [null, null]
+        : await Promise.all([fileToB64(form.fleetPem), fileToB64(form.sensorLicense)]);
       const r = await fetch("/api/deploy", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -73,6 +86,10 @@ export default function App() {
           sensorCount: Number(form.sensorCount),
           deployFleet: form.deployFleet,
           communityString: form.communityString,
+          fleetRepoToken: form.fleetRepoToken,
+          sensorRepoToken: form.sensorRepoToken,
+          fleetPemB64,
+          sensorLicenseB64,
           publicIp: pf?.publicIp?.ip || null,
           dryRun,
         }),
@@ -101,7 +118,7 @@ export default function App() {
       <header className="topbar">
         <div>
           <h1>Corelight Azure Deployer</h1>
-          <p className="muted">One-button Fleet Manager + sensor deployment · <span className="badge">M2 · infra</span></p>
+          <p className="muted">One-button Fleet Manager + sensor deployment · <span className="badge">M3 · Fleet</span></p>
         </div>
       </header>
 
