@@ -3,29 +3,33 @@
 // and detects the operator's public IP (used later to scope the NSG allow rules).
 import { execFile } from "node:child_process";
 import https from "node:https";
+import { resolveTerraform, isVendored } from "./tfbin.js";
 
 const WIN = process.platform === "win32";
 
 // execFile wrapper. On Windows, `az` is a .cmd batch file, so it needs a shell to
 // resolve; on POSIX we avoid the shell. Returns {ok, stdout, stderr}.
-function exec(cmd, args, { timeout = 15000 } = {}) {
+function exec(cmd, args, { timeout = 15000, shell = WIN } = {}) {
   return new Promise((resolve) => {
-    execFile(cmd, args, { timeout, shell: WIN, windowsHide: true }, (err, stdout, stderr) => {
+    execFile(cmd, args, { timeout, shell, windowsHide: true }, (err, stdout, stderr) => {
       resolve({ ok: !err, stdout: (stdout || "").trim(), stderr: (stderr || "").trim() });
     });
   });
 }
 
 export async function checkTerraform() {
-  const r = await exec("terraform", ["version", "-json"]);
-  if (!r.ok) return { installed: false, error: "terraform not found on PATH" };
+  // Prefer the vendored binary (P2 zero-prereq); fall back to a `terraform` on PATH.
+  const bin = resolveTerraform();
+  const bundled = isVendored();
+  const r = await exec(bin, ["version", "-json"], { shell: false });
+  if (!r.ok) return { installed: false, bundled: false, error: "terraform not found (no vendored binary and none on PATH)" };
   try {
     const j = JSON.parse(r.stdout);
-    return { installed: true, version: j.terraform_version };
+    return { installed: true, bundled, version: j.terraform_version };
   } catch {
     // Older terraform without -json: fall back to first line.
     const line = r.stdout.split("\n")[0] || "";
-    return { installed: true, version: line.replace(/^Terraform\s+/i, "") };
+    return { installed: true, bundled, version: line.replace(/^Terraform\s+/i, "") };
   }
 }
 

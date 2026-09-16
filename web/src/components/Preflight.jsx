@@ -32,7 +32,9 @@ export default function Preflight({ data, loading, onRefresh }) {
       </Row>
 
       <Row label="Terraform" ok={terraform.installed}>
-        {terraform.installed ? <>v{terraform.version}</> : <span className="bad-text">{terraform.error}</span>}
+        {terraform.installed
+          ? <>v{terraform.version} {terraform.bundled ? <span className="muted">— bundled</span> : <span className="muted">— from PATH</span>}</>
+          : <span className="bad-text">{terraform.error}</span>}
       </Row>
 
       <Row label="Your public IP" ok={!!publicIp.ip}>

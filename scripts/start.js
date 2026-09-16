@@ -5,11 +5,23 @@ import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import open from "open";
+import { vendorTerraformPath } from "../server/lib/tfbin.js";
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
 const PORT = process.env.PORT || 8787;
 
 async function main() {
+  // Ensure the bundled Terraform binary exists; fetch it if missing (safety net for
+  // anyone who ran `npm install` directly instead of `npm run setup`).
+  if (!existsSync(vendorTerraformPath())) {
+    console.log("No bundled Terraform found — fetching it (one-time)...");
+    try {
+      await run("node", [join("scripts", "fetch-terraform.js")]);
+    } catch {
+      console.warn("Could not fetch Terraform — will fall back to a `terraform` on PATH if present.");
+    }
+  }
+
   // Ensure the web build exists; if not, build it first.
   if (!existsSync(join(root, "web", "dist", "index.html"))) {
     console.log("No web build found — building UI (one-time)...");

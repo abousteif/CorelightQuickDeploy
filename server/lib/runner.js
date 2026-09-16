@@ -12,6 +12,7 @@ import { randomBytes } from "node:crypto";
 import readline from "node:readline";
 import { bringUpFleet } from "./fleet.js";
 import { bringUpSensors } from "./sensor.js";
+import { resolveTerraform } from "./tfbin.js";
 
 const WIN = process.platform === "win32";
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -154,10 +155,11 @@ function emit(run, event, data) {
 // Run one terraform subcommand, streaming stdout+stderr line-by-line. Resolves exit code.
 function runTerraform(run, args, phase) {
   return new Promise((resolve) => {
+    const tfBin = resolveTerraform();
     emit(run, "log", { level: "info", line: `$ terraform ${args.join(" ")}` });
-    const child = spawn("terraform", args, {
+    const child = spawn(tfBin, args, {
       cwd: run.tfDir,
-      shell: WIN,
+      shell: false, // terraform is a real exe on every OS; no shell = spaces in the vendored path are safe
       windowsHide: true,
       env: { ...process.env, TF_IN_AUTOMATION: "1" },
     });
@@ -277,7 +279,7 @@ async function execute(run) {
 
 function readOutputs(run) {
   return new Promise((resolve) => {
-    execFile("terraform", ["output", "-json"], { cwd: run.tfDir, shell: WIN, windowsHide: true, maxBuffer: 4 * 1024 * 1024 }, (err, stdout) => {
+    execFile(resolveTerraform(), ["output", "-json"], { cwd: run.tfDir, shell: false, windowsHide: true, maxBuffer: 4 * 1024 * 1024 }, (err, stdout) => {
       if (err) return resolve(null);
       try {
         const raw = JSON.parse(stdout);
