@@ -70,6 +70,8 @@ export async function runPreflight() {
     checkAzure(),
     detectPublicIp(),
   ]);
-  const ready = terraform.installed && azure.loggedIn && !!publicIp.ip;
+  // Azure CLI is now OPTIONAL — the app can sign in via device code (see azureauth.js).
+  // If az happens to be logged in we still surface it (handy for prefilling the subscription).
+  const ready = terraform.installed && !!publicIp.ip;
   return { ready, terraform, azure, publicIp, platform: process.platform, checkedAt: new Date().toISOString() };
 }

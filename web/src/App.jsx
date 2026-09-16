@@ -28,13 +28,54 @@ export default function App() {
     existingFleetUser: "",
     existingFleetPass: "",
     existingFleetTokens: "",
+    azureSessionId: "",
   });
   const [lines, setLines] = useState([]);
   const [phase, setPhase] = useState("idle");
   const [running, setRunning] = useState(false);
   const [results, setResults] = useState(null);
+  // In-app Azure sign-in (device code) — replaces the az CLI dependency.
+  const [azure, setAzure] = useState({ status: "idle", sessionId: null, userCode: null, verificationUri: null, message: null, user: null, subscriptions: [], error: null });
 
   const setField = (k, v) => setForm((f) => ({ ...f, [k]: v }));
+
+  // Kick off a device-code sign-in; the polling effect below drives it to completion.
+  const startAzureLogin = useCallback(async () => {
+    setAzure((a) => ({ ...a, status: "starting", error: null }));
+    try {
+      const r = await fetch("/api/azure/login/start", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
+      const data = await r.json();
+      if (!r.ok) throw new Error(data.error || `HTTP ${r.status}`);
+      setAzure((a) => ({ ...a, status: "pending", sessionId: data.sessionId, userCode: data.userCode, verificationUri: data.verificationUri, message: data.message }));
+    } catch (e) {
+      setAzure((a) => ({ ...a, status: "error", error: e.message }));
+    }
+  }, []);
+
+  // Poll sign-in status while pending; on success, load subscriptions and record the session.
+  useEffect(() => {
+    if (azure.status !== "pending" || !azure.sessionId) return;
+    let stop = false;
+    const tick = async () => {
+      try {
+        const r = await fetch(`/api/azure/login/status?sessionId=${encodeURIComponent(azure.sessionId)}`);
+        const st = await r.json();
+        if (stop) return;
+        if (st.status === "authenticated") {
+          const sr = await fetch(`/api/azure/subscriptions?sessionId=${encodeURIComponent(azure.sessionId)}`);
+          const sd = await sr.json();
+          const subs = sd.subscriptions || [];
+          setAzure((a) => ({ ...a, status: "authenticated", user: st.user, subscriptions: subs }));
+          setForm((f) => ({ ...f, azureSessionId: azure.sessionId, subscriptionId: f.subscriptionId || subs[0]?.subscriptionId || "" }));
+        } else if (st.status === "error" || st.status === "unknown") {
+          setAzure((a) => ({ ...a, status: "error", error: st.error || "sign-in failed" }));
+        }
+      } catch { /* transient; keep polling */ }
+    };
+    const iv = setInterval(tick, 2500);
+    tick();
+    return () => { stop = true; clearInterval(iv); };
+  }, [azure.status, azure.sessionId]);
 
   const loadPreflight = useCallback(async () => {
     setPfLoading(true);
@@ -100,6 +141,7 @@ export default function App() {
           existingFleetUser: form.existingFleetUser,
           existingFleetPass: form.existingFleetPass,
           existingFleetTokens: form.existingFleetTokens,
+          azureSessionId: form.azureSessionId,
           publicIp: pf?.publicIp?.ip || null,
           dryRun,
         }),
@@ -135,7 +177,7 @@ export default function App() {
       <main className="layout">
         <div className="col">
           <Preflight data={pf} loading={pfLoading} onRefresh={loadPreflight} />
-          <DeployForm form={form} setField={setField} onDeploy={onDeploy} running={running} />
+          <DeployForm form={form} setField={setField} onDeploy={onDeploy} running={running} azure={azure} onAzureLogin={startAzureLogin} />
         </div>
         <div className="col">
           <LogPanel lines={lines} phase={phase} running={running} />

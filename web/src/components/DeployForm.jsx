@@ -12,7 +12,7 @@ function Field({ label, hint, children }) {
   );
 }
 
-export default function DeployForm({ form, setField, onDeploy, running }) {
+export default function DeployForm({ form, setField, onDeploy, running, azure = { status: "idle" }, onAzureLogin }) {
   const sensorSize = VM_SIZES.find((s) => s.value === form.sensorVmSize);
   const fleetSize = VM_SIZES.find((s) => s.value === form.fleetVmSize);
   const set = (k) => (e) => setField(k, e.target.type === "checkbox" ? e.target.checked : e.target.value);
@@ -48,9 +48,36 @@ export default function DeployForm({ form, setField, onDeploy, running }) {
       )}
 
       {isAzure && (<>
-      <Field label="Azure subscription ID" hint="Uses your existing `az login` session.">
-        <input value={form.subscriptionId} onChange={set("subscriptionId")} placeholder="00000000-0000-0000-0000-000000000000" required />
-      </Field>
+      <div className="subpanel">
+        <span className="field-label">Azure sign-in</span>
+        {azure.status === "authenticated" ? (
+          <>
+            <p className="muted small">✓ Signed in{azure.user ? <> as <strong>{azure.user}</strong></> : null}. A short-lived service principal is created automatically at deploy time — no Azure CLI needed.</p>
+            <Field label="Subscription" hint="Where the Fleet + sensors will be deployed.">
+              <select value={form.subscriptionId} onChange={set("subscriptionId")}>
+                {(azure.subscriptions || []).map((s) => (
+                  <option key={s.subscriptionId} value={s.subscriptionId}>{s.displayName} ({s.subscriptionId})</option>
+                ))}
+              </select>
+            </Field>
+          </>
+        ) : azure.status === "pending" ? (
+          <p className="muted small">
+            Open <a href={azure.verificationUri} target="_blank" rel="noreferrer">{azure.verificationUri}</a> and enter code <code>{azure.userCode}</code>, then finish signing in. Waiting…
+          </p>
+        ) : (
+          <>
+            <p className="muted small">Sign in with your browser (no <code>az</code> CLI required), or enter a subscription ID below if you already have <code>az login</code> active.</p>
+            <button className="btn" type="button" disabled={azure.status === "starting"} onClick={() => onAzureLogin?.()}>
+              {azure.status === "starting" ? "Starting…" : "Sign in to Azure"}
+            </button>
+            {azure.status === "error" && <p className="warn small">⚠ {azure.error}</p>}
+            <Field label="Azure subscription ID" hint="Only needed if you're relying on an existing `az login` session.">
+              <input value={form.subscriptionId} onChange={set("subscriptionId")} placeholder="00000000-0000-0000-0000-000000000000" />
+            </Field>
+          </>
+        )}
+      </div>
 
       <div className="grid2">
         <Field label="Region">

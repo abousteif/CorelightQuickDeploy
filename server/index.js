@@ -10,6 +10,7 @@ import { dirname, join } from "node:path";
 import { existsSync } from "node:fs";
 import { runPreflight } from "./lib/preflight.js";
 import { createRun, getRun, attach } from "./lib/runner.js";
+import { startDeviceLogin, getLoginStatus, listSubscriptions } from "./lib/azureauth.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = dirname(__dirname);
@@ -26,6 +27,27 @@ app.get("/api/preflight", async (_req, res) => {
     res.json(await runPreflight());
   } catch (e) {
     res.status(500).json({ error: String(e?.message || e) });
+  }
+});
+
+// --- In-app Azure sign-in (device code) — retires the `az login` prerequisite. ---
+app.post("/api/azure/login/start", async (req, res) => {
+  try {
+    res.json(await startDeviceLogin({ tenantId: req.body?.tenantId }));
+  } catch (e) {
+    res.status(500).json({ error: String(e?.message || e) });
+  }
+});
+
+app.get("/api/azure/login/status", (req, res) => {
+  res.json(getLoginStatus(String(req.query.sessionId || "")));
+});
+
+app.get("/api/azure/subscriptions", async (req, res) => {
+  try {
+    res.json({ subscriptions: await listSubscriptions(String(req.query.sessionId || "")) });
+  } catch (e) {
+    res.status(400).json({ error: String(e?.message || e) });
   }
 });
 

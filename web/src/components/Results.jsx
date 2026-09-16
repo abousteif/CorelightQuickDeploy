@@ -8,6 +8,9 @@ export default function Results({ data }) {
     <section className="card">
       <h2>Deployed</h2>
       <p className="muted small">Resource group <code>{data.resource_group_name}</code> — delete it to tear everything down.</p>
+      {data.azure_service_principal && (
+        <p className="muted small">Azure service principal <code>{data.azure_service_principal}</code> — {data.azure_sp_note}</p>
+      )}
 
       {data.fleet_deployed && (
         <div className="result-block">

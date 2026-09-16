@@ -25,10 +25,10 @@ export default function Preflight({ data, loading, onRefresh }) {
         </button>
       </div>
 
-      <Row label="Azure CLI" ok={azure.loggedIn}>
+      <Row label="Azure CLI (optional)" ok={true}>
         {azure.loggedIn
           ? <>Logged in — <strong>{azure.subscriptionName}</strong> <span className="muted">({azure.subscriptionId})</span></>
-          : <span className="bad-text">{azure.error || "not logged in"} — run <code>az login</code></span>}
+          : <span className="muted">not logged in — sign in from the form instead (no CLI needed)</span>}
       </Row>
 
       <Row label="Terraform" ok={terraform.installed}>

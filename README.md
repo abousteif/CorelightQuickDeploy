@@ -15,9 +15,13 @@ Sensors into Azure. Runs entirely on your machine (bound to `127.0.0.1`), inheri
 
 ## Prerequisites (any OS — Windows, macOS, Linux)
 - **Node.js** LTS (18+)
-- **Azure CLI**, already logged in: `az login`
 - **`ssh-keygen`** on your `PATH` (ships with OpenSSH on macOS, Linux, and Windows 10+) — the
   app generates a fresh per-run keypair for the VMs
+
+> **Azure CLI is optional.** Sign in from the app with your browser (device code) — it mints a
+> short-lived, subscription-scoped service principal for Terraform automatically. If you already
+> have `az login` active, you can just enter a subscription ID instead. (Browser sign-in requires
+> that your account can create app registrations in the tenant.)
 
 > **Terraform is bundled** — `npm run setup` (and `npm start` as a fallback) downloads a pinned,
 > checksum-verified Terraform binary into `vendor/terraform/<os>_<arch>/`, so you don't need to

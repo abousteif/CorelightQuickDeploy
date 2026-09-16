@@ -9,6 +9,7 @@
     "start": "node index.js"
   },
   "dependencies": {
+    "@azure/identity": "^4.13.3",
     "express": "^4.21.2",
     "ssh2": "^1.16.0"
   }

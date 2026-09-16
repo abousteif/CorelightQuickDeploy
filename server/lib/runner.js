@@ -13,6 +13,7 @@ import readline from "node:readline";
 import { bringUpFleet } from "./fleet.js";
 import { bringUpSensors } from "./sensor.js";
 import { resolveTerraform } from "./tfbin.js";
+import { provisionServicePrincipal } from "./azureauth.js";
 
 const WIN = process.platform === "win32";
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -161,7 +162,7 @@ function runTerraform(run, args, phase) {
       cwd: run.tfDir,
       shell: false, // terraform is a real exe on every OS; no shell = spaces in the vendored path are safe
       windowsHide: true,
-      env: { ...process.env, TF_IN_AUTOMATION: "1" },
+      env: { ...process.env, TF_IN_AUTOMATION: "1", ...(run.azureEnv || {}) },
     });
     const pipe = (stream, level) => {
       const rl = readline.createInterface({ input: stream });
@@ -200,6 +201,31 @@ async function execute(run) {
       level: "info",
       line: `Plan: ${tfvars.deploy_fleet ? "1 Fleet + " : "no Fleet, "}${tfvars.sensor_count} sensor(s) in new VNet ${tfvars.vnet_cidr} (${run.namePrefix}-rg, ${tfvars.location}).`,
     });
+
+    // 1b. Azure auth: if the operator signed in via the app (no az CLI), mint a service
+    // principal scoped to the subscription and pass it to Terraform through ARM_* env vars.
+    // Without a session we fall back to whatever `az login` provides (legacy path).
+    if (run.form.azureSessionId) {
+      emit(run, "status", { phase: "azure-auth" });
+      emit(run, "log", { level: "info", line: "Authenticating to Azure (creating a scoped service principal)…" });
+      const creds = await provisionServicePrincipal(run.form.azureSessionId, run.form.subscriptionId, {
+        displayName: run.namePrefix,
+        log: (line) => emit(run, "log", { level: "info", line }),
+      });
+      run.azureEnv = {
+        ARM_CLIENT_ID: creds.clientId,
+        ARM_CLIENT_SECRET: creds.clientSecret,
+        ARM_TENANT_ID: creds.tenantId,
+        ARM_SUBSCRIPTION_ID: creds.subscriptionId,
+        ARM_USE_CLI: "false",
+      };
+      run.azureApp = { sessionId: run.form.azureSessionId, appObjectId: creds.appObjectId, displayName: creds.displayName };
+      // Persist creds to the gitignored run workspace so a later manual `terraform destroy`
+      // works within the 24h secret lifetime. Never logged.
+      writeFileSync(join(run.dir, "azure-creds.env"),
+        `ARM_CLIENT_ID=${creds.clientId}\nARM_CLIENT_SECRET=${creds.clientSecret}\nARM_TENANT_ID=${creds.tenantId}\nARM_SUBSCRIPTION_ID=${creds.subscriptionId}\n`);
+      emit(run, "log", { level: "success", line: `Azure ready — service principal '${creds.displayName}' (secret expires in 24h).` });
+    }
 
     // 2. terraform init
     emit(run, "status", { phase: "init" });
@@ -253,6 +279,10 @@ async function execute(run) {
 
     // Build results: outputs + Fleet admin creds + per-sensor pairing status.
     const results = { ...(run.outputs || {}) };
+    if (run.azureApp) {
+      results.azure_service_principal = run.azureApp.displayName;
+      results.azure_sp_note = "Auto-created for this deploy; its secret expires in 24h. Delete it in Entra ID → App registrations when done.";
+    }
     if (run.fleetAdmin) {
       results.fleet_admin_user = run.fleetAdmin.user;
       results.fleet_admin_password = run.fleetAdmin.password;
@@ -279,7 +309,7 @@ async function execute(run) {
 
 function readOutputs(run) {
   return new Promise((resolve) => {
-    execFile(resolveTerraform(), ["output", "-json"], { cwd: run.tfDir, shell: false, windowsHide: true, maxBuffer: 4 * 1024 * 1024 }, (err, stdout) => {
+    execFile(resolveTerraform(), ["output", "-json"], { cwd: run.tfDir, shell: false, windowsHide: true, maxBuffer: 4 * 1024 * 1024, env: { ...process.env, ...(run.azureEnv || {}) } }, (err, stdout) => {
       if (err) return resolve(null);
       try {
         const raw = JSON.parse(stdout);
