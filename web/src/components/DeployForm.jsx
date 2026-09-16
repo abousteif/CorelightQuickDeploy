@@ -77,6 +77,28 @@ export default function DeployForm({ form, setField, onDeploy, running, azure = 
         )}
       </div>
 
+      <details className="subpanel">
+        <summary>Advanced — use an existing service principal (optional)</summary>
+        <p className="muted small">
+          Use this if your tenant blocks browser sign-in from creating app registrations
+          (a <code>403 Insufficient privileges</code> during deploy). Have an Azure admin create a
+          service principal with the <strong>Contributor</strong> role on the subscription, then paste
+          its values here. When all three are filled they’re used instead of browser sign-in. Secrets
+          stay local and are written only to the gitignored run workspace.
+        </p>
+        <Field label="Service principal — Client ID (app ID)">
+          <input value={form.spClientId} onChange={set("spClientId")} placeholder="00000000-0000-0000-0000-000000000000" autoComplete="off" />
+        </Field>
+        <div className="grid2">
+          <Field label="Client secret">
+            <input value={form.spClientSecret} onChange={set("spClientSecret")} type="password" autoComplete="off" />
+          </Field>
+          <Field label="Tenant ID">
+            <input value={form.spTenantId} onChange={set("spTenantId")} placeholder="00000000-0000-0000-0000-000000000000" autoComplete="off" />
+          </Field>
+        </div>
+      </details>
+
       <div className="grid2">
         <Field label="Region">
           <select value={form.region} onChange={set("region")}>

@@ -29,6 +29,10 @@ export default function App() {
     existingFleetPass: "",
     existingFleetTokens: "",
     azureSessionId: "",
+    // Optional: an existing service principal (for tenants that block app registration).
+    spClientId: "",
+    spClientSecret: "",
+    spTenantId: "",
   });
   const [lines, setLines] = useState([]);
   const [phase, setPhase] = useState("idle");
@@ -142,6 +146,9 @@ export default function App() {
           existingFleetPass: form.existingFleetPass,
           existingFleetTokens: form.existingFleetTokens,
           azureSessionId: form.azureSessionId,
+          spClientId: form.spClientId,
+          spClientSecret: form.spClientSecret,
+          spTenantId: form.spTenantId,
           publicIp: pf?.publicIp?.ip || null,
           dryRun,
         }),

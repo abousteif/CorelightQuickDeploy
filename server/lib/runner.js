@@ -16,6 +16,7 @@ import { bringUpFleet } from "./fleet.js";
 import { bringUpSensors } from "./sensor.js";
 import { resolveTerraform } from "./tfbin.js";
 import { provisionServicePrincipal } from "./azureauth.js";
+import { checkAzure } from "./preflight.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const serverRoot = dirname(__dirname);
@@ -199,29 +200,60 @@ async function execute(run) {
       line: `Plan: ${tfvars.deploy_fleet ? "1 Fleet + " : "no Fleet, "}${tfvars.sensor_count} sensor(s) in new VNet ${tfvars.vnet_cidr} (${run.namePrefix}-rg, ${tfvars.location}).`,
     });
 
-    // 1b. Azure auth: if the operator signed in via the app (no az CLI), mint a service
-    // principal scoped to the subscription and pass it to Terraform through ARM_* env vars.
-    // Without a session we fall back to whatever `az login` provides (legacy path).
-    if (run.form.azureSessionId) {
+    // 1b. Resolve Azure credentials for Terraform (ARM_* env), in priority order:
+    //   (1) an existing service principal the operator pasted in the form — works in
+    //       locked-down tenants that forbid creating app registrations;
+    //   (2) browser sign-in → auto-mint a subscription-scoped SP (needs app-registration rights);
+    //   (3) if auto-mint fails, fall back to an existing `az login` (Azure CLI) if present;
+    //   (4) no session at all → legacy CLI path (azurerm uses az login by default).
+    const spProvided = run.form.spClientId && run.form.spClientSecret && run.form.spTenantId;
+    if (spProvided) {
       emit(run, "status", { phase: "azure-auth" });
-      emit(run, "log", { level: "info", line: "Authenticating to Azure (creating a scoped service principal)…" });
-      const creds = await provisionServicePrincipal(run.form.azureSessionId, run.form.subscriptionId, {
-        displayName: run.namePrefix,
-        log: (line) => emit(run, "log", { level: "info", line }),
-      });
+      emit(run, "log", { level: "info", line: "Using the service principal you provided (no app registration needed)." });
       run.azureEnv = {
-        ARM_CLIENT_ID: creds.clientId,
-        ARM_CLIENT_SECRET: creds.clientSecret,
-        ARM_TENANT_ID: creds.tenantId,
-        ARM_SUBSCRIPTION_ID: creds.subscriptionId,
+        ARM_CLIENT_ID: run.form.spClientId,
+        ARM_CLIENT_SECRET: run.form.spClientSecret,
+        ARM_TENANT_ID: run.form.spTenantId,
+        ARM_SUBSCRIPTION_ID: run.form.subscriptionId,
         ARM_USE_CLI: "false",
       };
-      run.azureApp = { sessionId: run.form.azureSessionId, appObjectId: creds.appObjectId, displayName: creds.displayName };
-      // Persist creds to the gitignored run workspace so a later manual `terraform destroy`
-      // works within the 24h secret lifetime. Never logged.
-      writeFileSync(join(run.dir, "azure-creds.env"),
-        `ARM_CLIENT_ID=${creds.clientId}\nARM_CLIENT_SECRET=${creds.clientSecret}\nARM_TENANT_ID=${creds.tenantId}\nARM_SUBSCRIPTION_ID=${creds.subscriptionId}\n`);
-      emit(run, "log", { level: "success", line: `Azure ready — service principal '${creds.displayName}' (secret expires in 24h).` });
+    } else if (run.form.azureSessionId) {
+      emit(run, "status", { phase: "azure-auth" });
+      emit(run, "log", { level: "info", line: "Authenticating to Azure (creating a scoped service principal)…" });
+      try {
+        const creds = await provisionServicePrincipal(run.form.azureSessionId, run.form.subscriptionId, {
+          displayName: run.namePrefix,
+          log: (line) => emit(run, "log", { level: "info", line }),
+        });
+        run.azureEnv = {
+          ARM_CLIENT_ID: creds.clientId,
+          ARM_CLIENT_SECRET: creds.clientSecret,
+          ARM_TENANT_ID: creds.tenantId,
+          ARM_SUBSCRIPTION_ID: creds.subscriptionId,
+          ARM_USE_CLI: "false",
+        };
+        run.azureApp = { sessionId: run.form.azureSessionId, appObjectId: creds.appObjectId, displayName: creds.displayName };
+        // Persist creds to the gitignored run workspace so a later manual `terraform destroy`
+        // works within the 24h secret lifetime. Never logged.
+        writeFileSync(join(run.dir, "azure-creds.env"),
+          `ARM_CLIENT_ID=${creds.clientId}\nARM_CLIENT_SECRET=${creds.clientSecret}\nARM_TENANT_ID=${creds.tenantId}\nARM_SUBSCRIPTION_ID=${creds.subscriptionId}\n`);
+        emit(run, "log", { level: "success", line: `Azure ready — service principal '${creds.displayName}' (secret expires in 24h).` });
+      } catch (e) {
+        const msg = String(e?.message || e);
+        emit(run, "log", { level: "warn", line: `Could not auto-create a service principal: ${msg}` });
+        // Fallback (3): reuse an existing Azure CLI session if one is available.
+        const az = await checkAzure();
+        if (az.installed && az.loggedIn) {
+          emit(run, "log", { level: "info", line: `Falling back to your Azure CLI session (az login as ${az.user || "signed-in user"}).` });
+          run.azureEnv = { ARM_SUBSCRIPTION_ID: run.form.subscriptionId, ARM_USE_CLI: "true" };
+        } else {
+          throw new Error(
+            `Azure sign-in can't create a service principal in this tenant (${msg}), and no Azure CLI session was found. ` +
+            `Fix: either open “Advanced — use an existing service principal” and paste a Client ID + Secret + Tenant ` +
+            `(with Contributor on the subscription), or run \`az login\` and retry.`
+          );
+        }
+      }
     }
 
     // 2. terraform init

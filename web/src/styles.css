@@ -53,6 +53,8 @@ input[type="file"] { padding: 6px; }
 .check { display: flex; gap: 8px; align-items: flex-start; margin: 6px 0 14px; }
 .check input { width: auto; margin-top: 2px; }
 .subpanel { background: var(--card-2); border: 1px solid var(--border); border-radius: 8px; padding: 12px; margin-bottom: 12px; }
+details.subpanel > summary { cursor: pointer; font-weight: 600; font-size: 0.9rem; user-select: none; }
+details.subpanel[open] > summary { margin-bottom: 8px; }
 .aws-facade { border-style: dashed; opacity: 0.9; }
 
 /* Cloud provider selector */

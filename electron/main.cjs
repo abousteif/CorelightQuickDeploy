@@ -3,7 +3,7 @@
 // then point a BrowserWindow at http://127.0.0.1:PORT. This reuses the whole app (API, SSE,
 // static UI) with no rewrite. Electron carries its own Node runtime, and Terraform + the
 // module source ship as unpacked resources — so a packaged build needs nothing preinstalled.
-const { app, BrowserWindow, shell } = require("electron");
+const { app, BrowserWindow, shell, Menu } = require("electron");
 const path = require("node:path");
 const url = require("node:url");
 const http = require("node:http");
@@ -47,6 +47,36 @@ function waitForHealth(timeoutMs = 20000) {
   });
 }
 
+// A standard application menu. Beyond looking normal, the `editMenu` role is what
+// REGISTERS the Cut/Copy/Paste/Select-All keyboard accelerators (Cmd/Ctrl+C/V/X/A) —
+// without a menu that carries these roles, paste into form fields silently does nothing.
+function buildAppMenu() {
+  const isMac = process.platform === "darwin";
+  const template = [
+    ...(isMac ? [{ role: "appMenu" }] : []),
+    { role: "fileMenu" },
+    { role: "editMenu" },
+    { role: "viewMenu" },
+    { role: "windowMenu" },
+  ];
+  Menu.setApplicationMenu(Menu.buildFromTemplate(template));
+}
+
+// Right-click Cut/Copy/Paste/Select-All in editable fields and on selected text.
+function attachContextMenu(win) {
+  win.webContents.on("context-menu", (_e, params) => {
+    const { editFlags, isEditable, selectionText } = params;
+    if (!isEditable && !selectionText) return;
+    const items = [];
+    if (editFlags.canCut) items.push({ role: "cut" });
+    if (editFlags.canCopy) items.push({ role: "copy" });
+    if (editFlags.canPaste) items.push({ role: "paste" });
+    if (items.length) items.push({ type: "separator" });
+    items.push({ role: "selectAll" });
+    Menu.buildFromTemplate(items).popup({ window: win });
+  });
+}
+
 async function createWindow() {
   const win = new BrowserWindow({
     width: 1240,
@@ -59,10 +89,12 @@ async function createWindow() {
     shell.openExternal(target);
     return { action: "deny" };
   });
+  attachContextMenu(win);
   await win.loadURL(`http://${HOST}:${PORT}/`);
 }
 
 app.whenReady().then(async () => {
+  buildAppMenu();
   await startServer();
   await waitForHealth();
   await createWindow();
