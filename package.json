@@ -1,0 +1,17 @@
+{
+  "name": "corelight-azure-deployer",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Local one-button web app for Corelight SEs to deploy a Fleet Manager + N sensors into Azure.",
+  "type": "module",
+  "scripts": {
+    "setup": "npm install && npm --prefix server install && npm --prefix web install",
+    "dev": "concurrently -n server,web -c blue,green \"npm --prefix server run dev\" \"npm --prefix web run dev\"",
+    "start": "node scripts/start.js",
+    "build": "npm --prefix web run build"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.0",
+    "open": "^10.1.0"
+  }
+}

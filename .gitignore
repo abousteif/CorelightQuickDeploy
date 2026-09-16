@@ -1,0 +1,22 @@
+# dependencies
+node_modules/
+
+# web build output
+web/dist/
+
+# per-run workspaces (hold uploaded PEM/license/tokens + terraform state) — NEVER commit
+runs/
+*.tfstate
+*.tfstate.*
+.terraform/
+.terraform.lock.hcl
+
+# secrets / uploads
+*.pem
+*.lic
+*.license
+terraform.tfvars
+
+# OS / editor
+.DS_Store
+*.log
