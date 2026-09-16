@@ -7,20 +7,23 @@
 import express from "express";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { runPreflight } from "./lib/preflight.js";
 import { createRun, getRun, attach } from "./lib/runner.js";
 import { startDeviceLogin, getLoginStatus, listSubscriptions } from "./lib/azureauth.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = dirname(__dirname);
+// Single-source the version from the root package.json (same value the UI badge shows).
+let VERSION = "0.0.0";
+try { VERSION = JSON.parse(readFileSync(join(root, "package.json"), "utf8")).version || VERSION; } catch { /* keep default */ }
 const PORT = Number(process.env.PORT || 8787);
 const HOST = "127.0.0.1"; // localhost only — security requirement.
 
 const app = express();
 app.use(express.json({ limit: "10mb" })); // room for base64 PEM / license uploads
 
-app.get("/api/health", (_req, res) => res.json({ ok: true, service: "corelightquickdeploy", version: "0.1.0" }));
+app.get("/api/health", (_req, res) => res.json({ ok: true, service: "corelightquickdeploy", version: VERSION }));
 
 app.get("/api/preflight", async (_req, res) => {
   try {

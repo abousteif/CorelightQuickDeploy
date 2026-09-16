@@ -7,9 +7,33 @@ const { app, BrowserWindow, shell, Menu } = require("electron");
 const path = require("node:path");
 const url = require("node:url");
 const http = require("node:http");
+const { execSync } = require("node:child_process");
 
 const PORT = Number(process.env.PORT || 8787);
 const HOST = "127.0.0.1";
+
+// A GUI app launched from Finder/Dock inherits a stripped-down PATH (roughly
+// /usr/bin:/bin:/usr/sbin:/sbin) that omits Homebrew, /usr/local/bin, pyenv, etc. — so the
+// Azure CLI (`az`) the operator installed and `az login`-ed in a terminal is invisible to
+// us, and the CLI auth fallback would wrongly report "no Azure CLI session". Load the real
+// PATH from the user's login+interactive shell (best effort), and always make sure the
+// common install dirs are present. macOS/Linux only; Windows already has a sane PATH.
+function fixPath() {
+  if (process.platform === "win32") return;
+  try {
+    const shellBin = process.env.SHELL || "/bin/zsh";
+    const out = execSync(`${shellBin} -ilc 'command -p printf "%s" "$PATH"'`, { encoding: "utf8", timeout: 5000 });
+    if (out && out.includes("/")) process.env.PATH = out.trim();
+  } catch {
+    // Interactive shell unavailable or slow — fall through to the common-dirs guarantee.
+  }
+  const current = (process.env.PATH || "").split(":");
+  for (const p of ["/opt/homebrew/bin", "/usr/local/bin", "/usr/bin", "/bin"]) {
+    if (!current.includes(p)) { current.push(p); }
+  }
+  process.env.PATH = current.filter(Boolean).join(":");
+}
+fixPath();
 
 // Tell the server where its resources and writable workspace live when packaged (the code
 // itself is read-only inside app.asar). In dev these stay unset → repo-root paths.

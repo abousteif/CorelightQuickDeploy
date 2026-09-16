@@ -29,10 +29,6 @@ export default function App() {
     existingFleetPass: "",
     existingFleetTokens: "",
     azureSessionId: "",
-    // Optional: an existing service principal (for tenants that block app registration).
-    spClientId: "",
-    spClientSecret: "",
-    spTenantId: "",
   });
   const [lines, setLines] = useState([]);
   const [phase, setPhase] = useState("idle");
@@ -146,9 +142,6 @@ export default function App() {
           existingFleetPass: form.existingFleetPass,
           existingFleetTokens: form.existingFleetTokens,
           azureSessionId: form.azureSessionId,
-          spClientId: form.spClientId,
-          spClientSecret: form.spClientSecret,
-          spTenantId: form.spTenantId,
           publicIp: pf?.publicIp?.ip || null,
           dryRun,
         }),
@@ -177,7 +170,12 @@ export default function App() {
       <header className="topbar">
         <div>
           <h1>Corelight Quick Deploy</h1>
-          <p className="muted">One-button Fleet Manager + sensor deployment · <span className="badge">M5 · complete</span></p>
+          <p className="muted">
+            One-button Fleet Manager + sensor deployment ·{" "}
+            <span className="badge" title={`Built ${new Date(__BUILD_TIME__).toLocaleString()}`}>
+              v{__APP_VERSION__} · built {new Date(__BUILD_TIME__).toLocaleDateString()} {new Date(__BUILD_TIME__).toLocaleTimeString()}
+            </span>
+          </p>
         </div>
       </header>
 

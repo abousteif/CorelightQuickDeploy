@@ -200,24 +200,12 @@ async function execute(run) {
       line: `Plan: ${tfvars.deploy_fleet ? "1 Fleet + " : "no Fleet, "}${tfvars.sensor_count} sensor(s) in new VNet ${tfvars.vnet_cidr} (${run.namePrefix}-rg, ${tfvars.location}).`,
     });
 
-    // 1b. Resolve Azure credentials for Terraform (ARM_* env), in priority order:
-    //   (1) an existing service principal the operator pasted in the form — works in
-    //       locked-down tenants that forbid creating app registrations;
-    //   (2) browser sign-in → auto-mint a subscription-scoped SP (needs app-registration rights);
-    //   (3) if auto-mint fails, fall back to an existing `az login` (Azure CLI) if present;
-    //   (4) no session at all → legacy CLI path (azurerm uses az login by default).
-    const spProvided = run.form.spClientId && run.form.spClientSecret && run.form.spTenantId;
-    if (spProvided) {
-      emit(run, "status", { phase: "azure-auth" });
-      emit(run, "log", { level: "info", line: "Using the service principal you provided (no app registration needed)." });
-      run.azureEnv = {
-        ARM_CLIENT_ID: run.form.spClientId,
-        ARM_CLIENT_SECRET: run.form.spClientSecret,
-        ARM_TENANT_ID: run.form.spTenantId,
-        ARM_SUBSCRIPTION_ID: run.form.subscriptionId,
-        ARM_USE_CLI: "false",
-      };
-    } else if (run.form.azureSessionId) {
+    // 1b. Resolve Azure credentials for Terraform (ARM_* env). The browser sign-in gives a
+    // *user* token, which Terraform's azurerm provider can't consume directly — it needs a
+    // service principal or the Azure CLI. So we try to auto-mint a subscription-scoped SP;
+    // if the tenant forbids that (very common — "can't create app registrations"), we fall
+    // back to the operator's own `az login` session, which uses their subscription RBAC.
+    if (run.form.azureSessionId) {
       emit(run, "status", { phase: "azure-auth" });
       emit(run, "log", { level: "info", line: "Authenticating to Azure (creating a scoped service principal)…" });
       try {
@@ -240,17 +228,16 @@ async function execute(run) {
         emit(run, "log", { level: "success", line: `Azure ready — service principal '${creds.displayName}' (secret expires in 24h).` });
       } catch (e) {
         const msg = String(e?.message || e);
-        emit(run, "log", { level: "warn", line: `Could not auto-create a service principal: ${msg}` });
-        // Fallback (3): reuse an existing Azure CLI session if one is available.
+        // Fall back to an existing Azure CLI session (uses the operator's own account).
         const az = await checkAzure();
         if (az.installed && az.loggedIn) {
-          emit(run, "log", { level: "info", line: `Falling back to your Azure CLI session (az login as ${az.user || "signed-in user"}).` });
+          emit(run, "log", { level: "info", line: `This tenant doesn't allow auto-creating a service principal — using your Azure CLI session instead (az login as ${az.user || "signed-in user"}).` });
           run.azureEnv = { ARM_SUBSCRIPTION_ID: run.form.subscriptionId, ARM_USE_CLI: "true" };
         } else {
           throw new Error(
-            `Azure sign-in can't create a service principal in this tenant (${msg}), and no Azure CLI session was found. ` +
-            `Fix: either open “Advanced — use an existing service principal” and paste a Client ID + Secret + Tenant ` +
-            `(with Contributor on the subscription), or run \`az login\` and retry.`
+            `Couldn't authenticate to Azure. Auto-creating a service principal is blocked in this tenant (${msg}), ` +
+            `and no Azure CLI session was found. Fix: install the Azure CLI and run \`az login\` with an account that ` +
+            `has access to this subscription, then retry.`
           );
         }
       }

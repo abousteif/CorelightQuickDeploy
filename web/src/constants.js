@@ -15,6 +15,7 @@ export const REGIONS = [
 
 export const VM_SIZES = [
   { value: "Standard_D4s_v3", label: "Standard_D4s_v3 (4 vCPU / 16 GiB)", mlWarn: true },
+  { value: "Standard_D8s_v4", label: "Standard_D8s_v4 (8 vCPU / 32 GiB)", mlWarn: false },
   { value: "Standard_D8s_v7", label: "Standard_D8s_v7 (8 vCPU / 32 GiB)", mlWarn: false },
   { value: "Standard_D16s_v7", label: "Standard_D16s_v7 (16 vCPU / 64 GiB)", mlWarn: false },
 ];
@@ -22,7 +23,7 @@ export const VM_SIZES = [
 export const DEFAULTS = {
   cloud: "azure",
   region: "centralus",
-  fleetVmSize: "Standard_D8s_v7",
+  fleetVmSize: "Standard_D8s_v4",
   sensorVmSize: "Standard_D4s_v3",
   sensorCount: 1,
   deployFleet: true,
