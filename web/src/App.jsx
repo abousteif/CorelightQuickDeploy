@@ -25,6 +25,7 @@ export default function App() {
     existingFleetSslname: "",
     existingFleetUser: "",
     existingFleetPass: "",
+    existingFleetTokens: "",
   });
   const [lines, setLines] = useState([]);
   const [phase, setPhase] = useState("idle");
@@ -90,6 +91,11 @@ export default function App() {
           sensorRepoToken: form.sensorRepoToken,
           fleetPemB64,
           sensorLicenseB64,
+          existingFleetAddr: form.existingFleetAddr,
+          existingFleetSslname: form.existingFleetSslname,
+          existingFleetUser: form.existingFleetUser,
+          existingFleetPass: form.existingFleetPass,
+          existingFleetTokens: form.existingFleetTokens,
           publicIp: pf?.publicIp?.ip || null,
           dryRun,
         }),
@@ -118,7 +124,7 @@ export default function App() {
       <header className="topbar">
         <div>
           <h1>Corelight Azure Deployer</h1>
-          <p className="muted">One-button Fleet Manager + sensor deployment · <span className="badge">M4 · end-to-end</span></p>
+          <p className="muted">One-button Fleet Manager + sensor deployment · <span className="badge">M5 · complete</span></p>
         </div>
       </header>
 

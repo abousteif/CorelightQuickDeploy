@@ -63,13 +63,17 @@ export default function DeployForm({ form, setField, onDeploy, running }) {
         </>
       ) : (
         <div className="subpanel">
-          <p className="muted small">Existing Fleet — sensors will pair to it.</p>
-          <Field label="Fleet pairing address (host:port)"><input value={form.existingFleetAddr} onChange={set("existingFleetAddr")} placeholder="10.50.0.x:1443" /></Field>
-          <Field label="Fleet server_sslname"><input value={form.existingFleetSslname} onChange={set("existingFleetSslname")} placeholder="internal.<...>.corelight.io" /></Field>
+          <p className="muted small">Existing Fleet — sensors will pair to it. The pairing address is what the sensors reach (its <code>:1443</code>); the REST API is that host on <code>:443</code>.</p>
+          <Field label="Fleet pairing address (host:port)" hint="Must be reachable from the new sensor VNet."><input value={form.existingFleetAddr} onChange={set("existingFleetAddr")} placeholder="10.50.0.x:1443" /></Field>
           <div className="grid2">
-            <Field label="Fleet admin user" hint="Used to auto-mint per-sensor tokens."><input value={form.existingFleetUser} onChange={set("existingFleetUser")} autoComplete="off" /></Field>
+            <Field label="Fleet admin user" hint="Auto-mints a token per sensor."><input value={form.existingFleetUser} onChange={set("existingFleetUser")} autoComplete="off" /></Field>
             <Field label="Fleet admin password"><input value={form.existingFleetPass} onChange={set("existingFleetPass")} type="password" autoComplete="off" /></Field>
           </div>
+          <p className="muted small">— or, if you can’t share admin creds, paste pre-minted tokens instead —</p>
+          <Field label="server_sslname" hint="Required only when pasting tokens."><input value={form.existingFleetSslname} onChange={set("existingFleetSslname")} placeholder="internal.<...>.corelight.io" /></Field>
+          <Field label="Pre-minted pairing tokens" hint="One per sensor (newline/comma separated).">
+            <textarea rows="3" value={form.existingFleetTokens} onChange={set("existingFleetTokens")} placeholder="token1&#10;token2" />
+          </Field>
         </div>
       )}
 

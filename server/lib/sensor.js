@@ -97,10 +97,27 @@ export async function bringUpSensors(run, emit, fleetCtx) {
 
   emit(run, "status", { phase });
 
-  // Fleet API context: base URL + admin creds, plus the private pairing URL.
-  const { apiBase, adminUser, adminPass, pairingUrl } = fleetCtx;
-  emit(run, "log", { level: "info", line: `Logging in to Fleet API at ${apiBase}…`, phase });
-  const cookies = await login(apiBase, adminUser, adminPass);
+  // Fleet context. Two modes:
+  //  - mint: log in with admin creds and mint a token per sensor via the Fleet API.
+  //  - paste: use operator-supplied pre-minted tokens (+ a fixed server_sslname).
+  const { apiBase, adminUser, adminPass, pairingUrl, tokens, serverSslname } = fleetCtx;
+  const pasteMode = Array.isArray(tokens) && tokens.length > 0;
+  let cookies = null;
+  if (pasteMode) {
+    emit(run, "log", { level: "info", line: `Using ${tokens.length} operator-supplied pairing token(s).`, phase });
+  } else {
+    emit(run, "log", { level: "info", line: `Logging in to Fleet API at ${apiBase}…`, phase });
+    cookies = await login(apiBase, adminUser, adminPass);
+  }
+
+  // Return {uid, server_sslname, tethering_token} for sensor index i.
+  const getPairing = async (i, name) => {
+    if (pasteMode) {
+      if (!tokens[i]) throw new Error(`No pre-minted token for sensor #${i + 1} (${name})`);
+      return { uid: null, server_sslname: serverSslname, tethering_token: tokens[i] };
+    }
+    return createSensor(apiBase, cookies, name);
+  };
 
   const username = run.form.adminUsername || "azureuser";
   const sensorRepoToken = run.secrets?.sensorRepoToken;
@@ -109,12 +126,13 @@ export async function bringUpSensors(run, emit, fleetCtx) {
   const communityString = run.secrets?.communityString || "corelight";
 
   run.sensorResults = [];
-  for (const sensor of sensors) {
+  for (let i = 0; i < sensors.length; i++) {
+    const sensor = sensors[i];
     emit(run, "log", { level: "info", line: `=== ${sensor.name} (${sensor.public_ip}) ===`, phase });
 
-    // 1. Mint the pairing token on the Fleet.
-    emit(run, "log", { level: "info", line: `[${sensor.name}] minting pairing token…`, phase });
-    const pairing = await createSensor(apiBase, cookies, sensor.name);
+    // 1. Get the pairing token (mint on the Fleet, or use a supplied one).
+    emit(run, "log", { level: "info", line: `[${sensor.name}] ${pasteMode ? "using supplied" : "minting"} pairing token…`, phase });
+    const pairing = await getPairing(i, sensor.name);
     const yaml = corelightctlYaml({
       communityString,
       licenseKey,

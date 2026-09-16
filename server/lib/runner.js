@@ -69,6 +69,24 @@ function toTfvars(form, publicKey) {
   };
 }
 
+// Parse comma/space/newline-separated pre-minted tokens.
+function parseTokens(s) {
+  return String(s || "").split(/[\s,]+/).map((t) => t.trim()).filter(Boolean);
+}
+
+// Build the Fleet context for the existing-Fleet path from the form. The operator gives a
+// pairing address host:port (sensors reach it on :1443); the REST API is that host on :443.
+function existingFleetCtx(form) {
+  const addr = String(form.existingFleetAddr || "").trim();
+  const host = addr.replace(/:\d+$/, ""); // strip :port for the API base
+  const pairingUrl = `https://${addr}/fleet/v1/internal/softsensor/websocket`;
+  const tokens = parseTokens(form.existingFleetTokens);
+  if (form.existingFleetUser && form.existingFleetPass) {
+    return { apiBase: `https://${host}`, adminUser: form.existingFleetUser, adminPass: form.existingFleetPass, pairingUrl };
+  }
+  return { pairingUrl, tokens, serverSslname: String(form.existingFleetSslname || "").trim() };
+}
+
 export function createRun(form) {
   const id = newId();
   const namePrefix = `cqd-${id}`;
@@ -217,6 +235,8 @@ async function execute(run) {
     const sensorCount = Array.isArray(run.outputs?.sensors) ? run.outputs.sensors.length : 0;
     if (sensorCount > 0) {
       if (run.form.deployFleet !== false && run.fleetAdmin) {
+        // Deploy-Fleet path: pair to the Fleet we just brought up (API on public IP:443,
+        // sensors tether to its private IP:1443 inside the VNet).
         await bringUpSensors(run, emit, {
           apiBase: `https://${run.outputs.fleet_public_ip}`,
           adminUser: run.fleetAdmin.user,
@@ -224,7 +244,7 @@ async function execute(run) {
           pairingUrl: `https://${run.outputs.fleet_private_ip}:1443/fleet/v1/internal/softsensor/websocket`,
         });
       } else {
-        emit(run, "log", { level: "info", line: "Sensor VMs created; automatic pairing to an existing Fleet arrives in M5." });
+        await bringUpSensors(run, emit, existingFleetCtx(run.form));
       }
     }
 

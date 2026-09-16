@@ -4,11 +4,14 @@ A **local, one-button web app** for Corelight SEs to deploy a Fleet Manager + N 
 Sensors into Azure. Runs entirely on your machine (bound to `127.0.0.1`), inherits your
 `az login` session, and streams live progress in the browser.
 
-> **Status: M4 (end-to-end, deploy-Fleet path).** One button provisions the infra (new VNet,
-> subnet, NSG, Fleet VM + N sensor VMs), brings up the Fleet Manager (install → PEM → start →
-> admin), then for each sensor mints a pairing token, installs `corelight-sensor`, writes
-> `corelightctl.yaml`, and deploys + pairs it — all streamed live. Pairing sensors to an
-> **existing** Fleet (deploy-Fleet unchecked) is still M5.
+> **Status: M5 (feature-complete).** One button provisions the infra (new VNet, subnet, NSG,
+> optional Fleet VM + N sensor VMs), brings up the Fleet Manager (install → PEM → start → admin),
+> then for each sensor mints a pairing token, installs `corelight-sensor`, writes
+> `corelightctl.yaml`, and deploys + pairs it — all streamed live. Unchecking **Deploy Fleet**
+> pairs sensors to an **existing** Fleet instead: supply its pairing address + admin creds
+> (auto-mints a token per sensor), or paste pre-minted tokens + `server_sslname`.
+>
+> *Not yet run end-to-end against live VMs — validated up to `terraform plan` + module/build checks.*
 
 ## Prerequisites (any OS — Windows, macOS, Linux)
 - **Node.js** LTS (18+)
@@ -60,6 +63,8 @@ that resource group (Azure Portal or `az group delete -n cqd-<runid>-rg`), or ru
   workspace, live `terraform` streaming, results card
 - **M3** ✅ Fleet bring-up: install → PEM → start → create admin
 - **M4** ✅ per-sensor token minting + pairing + verify → **end-to-end one button** (deploy-Fleet path)
-- **M5** existing-Fleet path (operator-supplied Fleet address + creds) + polish
+- **M5** ✅ existing-Fleet path (operator-supplied Fleet address + admin creds, or pasted tokens)
+
+*Next: a live end-to-end run against real Azure VMs, and Windows verification.*
 
 *Teardown is intentionally SE-managed (delete the `cqd-<runid>-rg` resource group) — there is no Destroy button.*

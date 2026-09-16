@@ -42,9 +42,19 @@ app.post("/api/deploy", (req, res) => {
     if (!form.fleetPemB64) return res.status(400).json({ error: "Deploy Fleet requires the Fleet PEM (cert + license)" });
     if (!form.fleetRepoToken) return res.status(400).json({ error: "Deploy Fleet requires the Fleet repo token" });
   }
-  // Sensor install needs the BYOL repo token (auto-pairing wired for the deploy-Fleet path).
-  if (!form.dryRun && n > 0 && form.deployFleet !== false && !form.sensorRepoToken) {
+  // Any sensor install needs the BYOL repo token.
+  if (!form.dryRun && n > 0 && !form.sensorRepoToken) {
     return res.status(400).json({ error: "Deploying sensors requires the sensor (BYOL) repo token" });
+  }
+  // Existing-Fleet path: need a pairing address + a way to get tokens (admin creds or pasted).
+  if (!form.dryRun && n > 0 && form.deployFleet === false) {
+    if (!form.existingFleetAddr) return res.status(400).json({ error: "Existing Fleet requires its pairing address (host:port)" });
+    const hasCreds = !!(form.existingFleetUser && form.existingFleetPass);
+    const pasted = String(form.existingFleetTokens || "").split(/[\s,]+/).filter(Boolean);
+    if (!hasCreds) {
+      if (pasted.length < n) return res.status(400).json({ error: "Provide Fleet admin credentials, or paste at least one pairing token per sensor" });
+      if (!form.existingFleetSslname) return res.status(400).json({ error: "Pasted tokens also need the Fleet server_sslname" });
+    }
   }
   try {
     const { id, namePrefix } = createRun(form);
