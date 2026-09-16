@@ -13,7 +13,8 @@ export default function App() {
   const [form, setForm] = useState({
     subscriptionId: "",
     region: DEFAULTS.region,
-    vmSize: DEFAULTS.vmSize,
+    fleetVmSize: DEFAULTS.fleetVmSize,
+    sensorVmSize: DEFAULTS.sensorVmSize,
     sensorCount: DEFAULTS.sensorCount,
     deployFleet: DEFAULTS.deployFleet,
     communityString: DEFAULTS.communityString,
@@ -83,7 +84,8 @@ export default function App() {
         body: JSON.stringify({
           subscriptionId: form.subscriptionId,
           region: form.region,
-          vmSize: form.vmSize,
+          fleetVmSize: form.fleetVmSize,
+          sensorVmSize: form.sensorVmSize,
           sensorCount: Number(form.sensorCount),
           deployFleet: form.deployFleet,
           communityString: form.communityString,

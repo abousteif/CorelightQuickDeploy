@@ -99,7 +99,7 @@ resource "azurerm_linux_virtual_machine" "fleet" {
   computer_name         = "${var.name_prefix}-fleet"
   location              = azurerm_resource_group.rg.location
   resource_group_name   = azurerm_resource_group.rg.name
-  size                  = var.vm_size
+  size                  = var.fleet_vm_size
   admin_username        = var.admin_username
   network_interface_ids = [azurerm_network_interface.fleet[0].id]
   tags                  = var.tags
@@ -171,7 +171,7 @@ resource "azurerm_linux_virtual_machine" "sensor" {
   computer_name       = "${var.name_prefix}-sensor-${count.index + 1}"
   location            = azurerm_resource_group.rg.location
   resource_group_name = azurerm_resource_group.rg.name
-  size                = var.vm_size
+  size                = var.sensor_vm_size
   admin_username      = var.admin_username
   tags                = var.tags
 

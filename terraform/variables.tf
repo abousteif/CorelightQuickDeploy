@@ -43,9 +43,15 @@ variable "subnet_cidr" {
   default     = "10.50.0.0/24"
 }
 
-variable "vm_size" {
+variable "fleet_vm_size" {
   type        = string
-  description = "VM size for both Fleet and sensor VMs."
+  description = "VM size for the Fleet Manager VM."
+  default     = "Standard_D4s_v3"
+}
+
+variable "sensor_vm_size" {
+  type        = string
+  description = "VM size for each sensor VM."
   default     = "Standard_D4s_v3"
 }
 

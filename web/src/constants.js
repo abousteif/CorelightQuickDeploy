@@ -13,7 +13,8 @@ export const VM_SIZES = [
 
 export const DEFAULTS = {
   region: "centralus",
-  vmSize: "Standard_D4s_v3",
+  fleetVmSize: "Standard_D8s_v7",
+  sensorVmSize: "Standard_D4s_v3",
   sensorCount: 1,
   deployFleet: true,
   communityString: "corelight",
