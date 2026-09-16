@@ -53,6 +53,17 @@ input[type="file"] { padding: 6px; }
 .check { display: flex; gap: 8px; align-items: flex-start; margin: 6px 0 14px; }
 .check input { width: auto; margin-top: 2px; }
 .subpanel { background: var(--card-2); border: 1px solid var(--border); border-radius: 8px; padding: 12px; margin-bottom: 12px; }
+.aws-facade { border-style: dashed; opacity: 0.9; }
+
+/* Cloud provider selector */
+.cloud-tabs { display: flex; gap: 8px; }
+.cloud-tab { flex: 1; display: flex; align-items: center; justify-content: center; gap: 8px;
+  border: 1px solid var(--border); background: var(--card-2); color: var(--ink);
+  padding: 10px 12px; border-radius: 8px; cursor: pointer; font-size: 14px; }
+.cloud-tab.active { border-color: var(--accent, #4f8cff); box-shadow: 0 0 0 1px var(--accent, #4f8cff) inset; }
+.cloud-tab.disabled { opacity: 0.6; }
+.cloud-tab .pill { background: var(--card); border: 1px solid var(--border); border-radius: 20px;
+  padding: 1px 8px; font-size: 11px; color: var(--warn); }
 
 .btn { border: 1px solid var(--border); background: var(--card-2); color: var(--ink);
   padding: 9px 16px; border-radius: 8px; cursor: pointer; font-size: 14px; }

@@ -11,6 +11,7 @@ export default function App() {
   const [pf, setPf] = useState(null);
   const [pfLoading, setPfLoading] = useState(true);
   const [form, setForm] = useState({
+    cloud: DEFAULTS.cloud,
     subscriptionId: "",
     region: DEFAULTS.region,
     fleetVmSize: DEFAULTS.fleetVmSize,
@@ -82,6 +83,7 @@ export default function App() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          cloud: form.cloud,
           subscriptionId: form.subscriptionId,
           region: form.region,
           fleetVmSize: form.fleetVmSize,

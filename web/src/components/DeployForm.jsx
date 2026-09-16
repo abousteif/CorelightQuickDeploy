@@ -1,6 +1,6 @@
 // The single deploy form. Kept intentionally short — most settings are defaulted.
 import React from "react";
-import { REGIONS, VM_SIZES } from "../constants.js";
+import { CLOUD_PROVIDERS, REGIONS, VM_SIZES } from "../constants.js";
 
 function Field({ label, hint, children }) {
   return (
@@ -17,11 +17,37 @@ export default function DeployForm({ form, setField, onDeploy, running }) {
   const fleetSize = VM_SIZES.find((s) => s.value === form.fleetVmSize);
   const set = (k) => (e) => setField(k, e.target.type === "checkbox" ? e.target.checked : e.target.value);
   const setFile = (k) => (e) => setField(k, e.target.files?.[0] || null);
+  const cloud = form.cloud || "azure";
+  const isAzure = cloud === "azure";
 
   return (
-    <form className="card" onSubmit={(e) => { e.preventDefault(); onDeploy(); }}>
+    <form className="card" onSubmit={(e) => { e.preventDefault(); if (isAzure) onDeploy(); }}>
       <h2>Deploy</h2>
 
+      <Field label="Cloud provider" hint="Where the Fleet Manager and sensors will be deployed.">
+        <div className="cloud-tabs">
+          {CLOUD_PROVIDERS.map((c) => (
+            <button
+              key={c.value}
+              type="button"
+              className={`cloud-tab${cloud === c.value ? " active" : ""}${c.enabled ? "" : " disabled"}`}
+              aria-pressed={cloud === c.value}
+              onClick={() => setField("cloud", c.value)}
+            >
+              {c.label}
+              {c.badge && <span className="pill">{c.badge}</span>}
+            </button>
+          ))}
+        </div>
+      </Field>
+
+      {!isAzure && (
+        <div className="subpanel aws-facade">
+          <p className="muted">🚧 <strong>AWS support is coming in a future release.</strong> Sensor and Fleet deployment into AWS isn’t wired up yet — this option is a placeholder so the workflow is ready for it. For now, choose <strong>Microsoft Azure</strong> above to deploy.</p>
+        </div>
+      )}
+
+      {isAzure && (<>
       <Field label="Azure subscription ID" hint="Uses your existing `az login` session.">
         <input value={form.subscriptionId} onChange={set("subscriptionId")} placeholder="00000000-0000-0000-0000-000000000000" required />
       </Field>
@@ -100,6 +126,7 @@ export default function DeployForm({ form, setField, onDeploy, running }) {
         </button>
       </div>
       <p className="muted small">M4 (end-to-end): <strong>Preview</strong> runs <code>terraform plan</code> (safe, no resources). <strong>Deploy</strong> builds the VNet, NSG, Fleet + sensor VMs, brings up the Fleet Manager (install → PEM → start → admin), then for each sensor mints a pairing token, installs corelight-sensor, writes <code>corelightctl.yaml</code>, and deploys + pairs it. Results show the Fleet login and each sensor’s pairing status.</p>
+      </>)}
     </form>
   );
 }

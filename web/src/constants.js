@@ -1,5 +1,13 @@
 // Dropdown option lists. Each starts with a SINGLE option by design (per product decision);
 // adding more later = append entries here. `mlWarn` flags sizes that can't run ML/Anomaly.
+// Target clouds. Azure is live; AWS is a placeholder facade for a future major
+// upgrade (AWS sensor + Fleet). `enabled: false` renders it selectable-looking but
+// inert — no backend path exists yet.
+export const CLOUD_PROVIDERS = [
+  { value: "azure", label: "Microsoft Azure", enabled: true },
+  { value: "aws", label: "Amazon Web Services", enabled: false, badge: "Coming soon" },
+];
+
 export const REGIONS = [
   { value: "centralus", label: "Central US" },
   // more regions added here later
@@ -12,6 +20,7 @@ export const VM_SIZES = [
 ];
 
 export const DEFAULTS = {
+  cloud: "azure",
   region: "centralus",
   fleetVmSize: "Standard_D8s_v7",
   sensorVmSize: "Standard_D4s_v3",

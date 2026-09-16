@@ -33,6 +33,9 @@ app.get("/api/preflight", async (_req, res) => {
 // the SSE stream below to drive and watch it. `dryRun: true` runs `terraform plan` only.
 app.post("/api/deploy", (req, res) => {
   const form = req.body || {};
+  // Only Azure is wired up. AWS is a UI placeholder for a future release.
+  const cloud = form.cloud || "azure";
+  if (cloud !== "azure") return res.status(400).json({ error: `Cloud '${cloud}' is not supported yet — only Azure is available.` });
   if (!form.subscriptionId) return res.status(400).json({ error: "subscriptionId is required" });
   const n = Number(form.sensorCount);
   if (!Number.isInteger(n) || n < 0 || n > 50) return res.status(400).json({ error: "sensorCount must be 0–50" });
