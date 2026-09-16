@@ -1,8 +1,10 @@
 # Corelight Azure Deployer
 
 A **local, one-button web app** for Corelight SEs to deploy a Fleet Manager + N Software
-Sensors into Azure. Runs entirely on your machine (bound to `127.0.0.1`), inherits your
-`az login` session, and streams live progress in the browser.
+Sensors into Azure. Runs entirely on your machine (bound to `127.0.0.1`), signs in to Azure
+from the browser (no CLI), and streams live progress. Ships either as source you run with
+Node, or as a **double-clickable desktop app** (`.dmg` / `.exe` / `.AppImage`) that bundles
+Node + Terraform and needs nothing preinstalled.
 
 > **Status: M5 (feature-complete).** One button provisions the infra (new VNet, subnet, NSG,
 > optional Fleet VM + N sensor VMs), brings up the Fleet Manager (install → PEM → start → admin),
@@ -14,9 +16,11 @@ Sensors into Azure. Runs entirely on your machine (bound to `127.0.0.1`), inheri
 > *Not yet run end-to-end against live VMs — validated up to `terraform plan` + module/build checks.*
 
 ## Prerequisites (any OS — Windows, macOS, Linux)
-- **Node.js** LTS (18+)
-- **`ssh-keygen`** on your `PATH` (ships with OpenSSH on macOS, Linux, and Windows 10+) — the
-  app generates a fresh per-run keypair for the VMs
+- **Node.js** LTS (18+) — *only needed to run from source. The packaged desktop app (`.dmg` /
+  `.exe` / `.AppImage`) bundles its own Node runtime and needs nothing preinstalled.*
+
+> The per-run SSH keypair is generated **in-process** (RSA 4096, via `ssh2`) — no `ssh-keygen`
+> on your `PATH` required.
 
 > **Azure CLI is optional.** Sign in from the app with your browser (device code) — it mints a
 > short-lived, subscription-scoped service principal for Terraform automatically. If you already
@@ -36,6 +40,21 @@ npm run dev       # dev mode: Vite UI (5173) + backend (8787), hot reload
 npm start         # builds the UI, serves it from the backend, opens the browser
 ```
 Dev mode: open http://127.0.0.1:5173  ·  `npm start`: open http://127.0.0.1:8787
+
+## Build a standalone desktop app (zero prerequisites for the end user)
+```bash
+npm run app:dev     # build the UI + launch the Electron app locally (dev smoke test)
+npm run app:build   # produce a packaged installer for THIS OS in dist/
+```
+`app:build` bundles the Node runtime (via Electron) and a pinned, checksum-verified Terraform
+binary, so the resulting artifact runs on a machine with **nothing** preinstalled — no Node, no
+Terraform, no Azure CLI. Output per OS:
+- **macOS** → `dist/*.dmg`
+- **Windows** → `dist/*.exe` (NSIS installer)
+- **Linux** → `dist/*.AppImage`
+
+Each OS artifact must be built on that OS (or its CI runner) — a Windows `.exe` can't be produced
+from macOS. Builds are unsigned by default; add a signing identity for distribution.
 
 ## What it does today (M2)
 - **Preflight**: verifies `az login`, Terraform, and detects your public IP (used to scope the

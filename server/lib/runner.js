@@ -10,17 +10,20 @@ import { dirname, join } from "node:path";
 import { mkdirSync, cpSync, writeFileSync, readFileSync, existsSync } from "node:fs";
 import { randomBytes } from "node:crypto";
 import readline from "node:readline";
+import ssh2 from "ssh2"; // CJS module — default-import then read .utils (named ESM export is unreliable under Electron's loader)
+const sshUtils = ssh2.utils;
 import { bringUpFleet } from "./fleet.js";
 import { bringUpSensors } from "./sensor.js";
 import { resolveTerraform } from "./tfbin.js";
 import { provisionServicePrincipal } from "./azureauth.js";
 
-const WIN = process.platform === "win32";
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const serverRoot = dirname(__dirname);
 const appRoot = dirname(serverRoot);
-const TF_MODULE = join(appRoot, "terraform");
-const RUNS_DIR = join(appRoot, "runs");
+// Packaged (Electron) overrides: the module source ships as a read-only resource, and run
+// workspaces must live in a writable location (userData), not inside the asar. Dev = repo root.
+const TF_MODULE = process.env.CQD_TF_MODULE || join(appRoot, "terraform");
+const RUNS_DIR = process.env.CQD_RUNS_DIR || join(appRoot, "runs");
 
 // In-memory registry of runs for this process. A run outlives the POST that creates it;
 // the SSE GET attaches to it and triggers execution.
@@ -30,24 +33,18 @@ function newId() {
   return randomBytes(4).toString("hex"); // 8 hex chars → cqd-xxxxxxxx
 }
 
-// ssh-keygen ships with OpenSSH on macOS, Linux, and Windows 10+.
+// Generate the per-run SSH keypair in-process (no external ssh-keygen — one less prereq,
+// and works identically in a packaged Electron app). RSA 4096 is the key type Azure
+// documents for Linux VM admin_ssh_key.
 function generateKeypair(dir) {
-  const keyPath = join(dir, "id_ed25519");
-  return new Promise((resolve, reject) => {
-    execFile(
-      "ssh-keygen",
-      ["-t", "ed25519", "-N", "", "-C", "corelight-quick-deploy", "-f", keyPath],
-      { shell: WIN, windowsHide: true, timeout: 20000 },
-      (err) => {
-        if (err) return reject(new Error(`ssh-keygen failed: ${err.message}`));
-        try {
-          resolve({ privateKeyPath: keyPath, publicKey: readFileSync(`${keyPath}.pub`, "utf8").trim() });
-        } catch (e) {
-          reject(e);
-        }
-      }
-    );
+  const keyPath = join(dir, "id_rsa");
+  const { private: privateKey, public: publicKey } = sshUtils.generateKeyPairSync("rsa", {
+    bits: 4096,
+    comment: "corelight-quick-deploy",
   });
+  writeFileSync(keyPath, privateKey, { mode: 0o600 });
+  writeFileSync(`${keyPath}.pub`, publicKey);
+  return { privateKeyPath: keyPath, publicKey: publicKey.trim() };
 }
 
 // Build the tfvars object the module expects from the validated form.
@@ -191,8 +188,8 @@ async function execute(run) {
       filter: (src) => !/[\\/](\.terraform|\.terraform\.lock\.hcl|terraform\.tfstate.*)$/.test(src),
     });
 
-    emit(run, "log", { level: "info", line: "Generating per-run SSH keypair (ed25519)..." });
-    const { publicKey, privateKeyPath } = await generateKeypair(run.sshDir);
+    emit(run, "log", { level: "info", line: "Generating per-run SSH keypair (RSA 4096, in-process)..." });
+    const { publicKey, privateKeyPath } = generateKeypair(run.sshDir);
     run.privateKeyPath = privateKeyPath;
 
     const tfvars = toTfvars(run.form, publicKey);
@@ -346,13 +343,4 @@ export function attach(run, res) {
   } else if (run.status === "complete" || run.status === "error") {
     try { res.end(); } catch {}
   }
-}
-
-export function hasSshKeygen() {
-  return new Promise((resolve) => {
-    execFile("ssh-keygen", ["-A", "-?"], { shell: WIN, windowsHide: true, timeout: 5000 }, (err, _o, stderr) => {
-      // ssh-keygen prints usage to stderr and exits nonzero for bad flags; presence is what matters.
-      resolve(!/ENOENT|not found|not recognized/i.test((err && err.message) || stderr || "") || !err);
-    });
-  });
 }

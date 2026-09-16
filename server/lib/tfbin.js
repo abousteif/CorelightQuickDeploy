@@ -13,6 +13,13 @@ export const TERRAFORM_VERSION = "1.15.8";
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const appRoot = dirname(dirname(__dirname)); // server/lib -> server -> repo root
 
+// Root under which vendor/ lives. In a packaged Electron app the binary is shipped as an
+// unpacked extraResource under process.resourcesPath (the Electron main sets CQD_RESOURCES_PATH);
+// in dev/CLI it's the repo root.
+function vendorRoot() {
+  return process.env.CQD_RESOURCES_PATH || appRoot;
+}
+
 // Map Node's platform/arch onto HashiCorp release naming.
 export function platformKey() {
   const os = process.platform === "win32" ? "windows"
@@ -24,7 +31,7 @@ export function platformKey() {
 
 export function vendorDir() {
   const { os, arch } = platformKey();
-  return join(appRoot, "vendor", "terraform", `${os}_${arch}`);
+  return join(vendorRoot(), "vendor", "terraform", `${os}_${arch}`);
 }
 
 export function vendorTerraformPath() {

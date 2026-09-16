@@ -4,6 +4,9 @@ node_modules/
 # web build output
 web/dist/
 
+# electron-builder packaged app output
+dist/
+
 # vendored Terraform binary (fetched per-OS via scripts/fetch-terraform.js)
 vendor/
 
