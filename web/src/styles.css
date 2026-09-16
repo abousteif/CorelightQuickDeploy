@@ -71,3 +71,12 @@ input[type="file"] { padding: 6px; }
 .log-line.info .txt { color: var(--ink); }
 .log-line.success .txt { color: var(--ok); }
 .log-line.error .txt { color: var(--bad); }
+.log-line.warn .txt { color: #d9a441; }
+
+/* results */
+.result-block { margin-top: 14px; }
+.result-block h3 { font-size: 13px; margin: 0 0 6px; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; }
+.kv { list-style: none; margin: 0 0 10px; padding: 0; }
+.kv li { display: flex; justify-content: space-between; gap: 12px; padding: 3px 0; font-size: 13px; border-bottom: 1px solid var(--border); }
+.kv li span { color: var(--muted); flex: none; }
+.kv li code, .kv li a { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12.5px; text-align: right; word-break: break-all; }

@@ -80,10 +80,15 @@ export default function DeployForm({ form, setField, onDeploy, running }) {
         <input type="file" accept=".lic,.license,.txt,.json" onChange={setFile("sensorLicense")} />
       </Field>
 
-      <button className="btn primary" type="submit" disabled={running}>
-        {running ? "Deploying…" : "Deploy"}
-      </button>
-      <p className="muted small">M1: this streams a demo run to prove the pipeline. Real provisioning arrives in M2.</p>
+      <div className="grid2">
+        <button className="btn" type="button" disabled={running} onClick={() => onDeploy(true)}>
+          Preview (plan)
+        </button>
+        <button className="btn primary" type="submit" disabled={running}>
+          {running ? "Working…" : "Deploy"}
+        </button>
+      </div>
+      <p className="muted small">M2: <strong>Preview</strong> runs <code>terraform plan</code> (safe, no resources). <strong>Deploy</strong> builds the VNet, NSG, optional Fleet VM and sensor VMs in Azure. Fleet install + sensor pairing arrive in M3/M4; the PEM, tokens and license fields aren’t used yet.</p>
     </form>
   );
 }

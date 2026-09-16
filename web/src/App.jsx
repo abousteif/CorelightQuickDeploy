@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useState } from "react";
 import Preflight from "./components/Preflight.jsx";
 import DeployForm from "./components/DeployForm.jsx";
 import LogPanel from "./components/LogPanel.jsx";
+import Results from "./components/Results.jsx";
 import { DEFAULTS } from "./constants.js";
 
 const now = () => new Date().toLocaleTimeString();
@@ -28,6 +29,7 @@ export default function App() {
   const [lines, setLines] = useState([]);
   const [phase, setPhase] = useState("idle");
   const [running, setRunning] = useState(false);
+  const [results, setResults] = useState(null);
 
   const setField = (k, v) => setForm((f) => ({ ...f, [k]: v }));
 
@@ -50,16 +52,48 @@ export default function App() {
 
   const addLine = (l) => setLines((prev) => [...prev, { ts: now(), ...l }]);
 
-  const onDeploy = () => {
+  // dryRun=true → terraform plan only (safe preview, no resources created).
+  const onDeploy = async (dryRun = false) => {
     setLines([]);
+    setResults(null);
     setRunning(true);
     setPhase("starting");
-    const qs = new URLSearchParams({ sensors: String(form.sensorCount), deployFleet: String(form.deployFleet) });
-    const es = new EventSource(`/api/deploy/stream?${qs}`);
+    addLine({ level: "info", line: dryRun ? "Starting preview (terraform plan)…" : "Starting deployment…" });
+
+    // 1. POST the form to create a run.
+    let runId;
+    try {
+      const r = await fetch("/api/deploy", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          subscriptionId: form.subscriptionId,
+          region: form.region,
+          vmSize: form.vmSize,
+          sensorCount: Number(form.sensorCount),
+          deployFleet: form.deployFleet,
+          communityString: form.communityString,
+          publicIp: pf?.publicIp?.ip || null,
+          dryRun,
+        }),
+      });
+      const data = await r.json();
+      if (!r.ok) throw new Error(data.error || `HTTP ${r.status}`);
+      runId = data.runId;
+    } catch (e) {
+      addLine({ level: "error", line: `Could not start run: ${e.message}` });
+      setRunning(false);
+      setPhase("error");
+      return;
+    }
+
+    // 2. Attach to the SSE stream for that run.
+    const es = new EventSource(`/api/deploy/stream?runId=${encodeURIComponent(runId)}`);
     es.addEventListener("log", (e) => addLine(JSON.parse(e.data)));
     es.addEventListener("status", (e) => setPhase(JSON.parse(e.data).phase));
-    es.addEventListener("error", () => { es.close(); setRunning(false); });
-    // Server ends the stream on completion; EventSource fires onerror on close.
+    es.addEventListener("results", (e) => setResults(JSON.parse(e.data)));
+    es.addEventListener("end", () => { es.close(); setRunning(false); });
+    es.onerror = () => { es.close(); setRunning(false); };
   };
 
   return (
@@ -67,7 +101,7 @@ export default function App() {
       <header className="topbar">
         <div>
           <h1>Corelight Azure Deployer</h1>
-          <p className="muted">One-button Fleet Manager + sensor deployment · <span className="badge">M1 scaffold</span></p>
+          <p className="muted">One-button Fleet Manager + sensor deployment · <span className="badge">M2 · infra</span></p>
         </div>
       </header>
 
@@ -78,6 +112,7 @@ export default function App() {
         </div>
         <div className="col">
           <LogPanel lines={lines} phase={phase} running={running} />
+          {results && <Results data={results} />}
         </div>
       </main>
     </div>

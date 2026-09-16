@@ -1,12 +1,15 @@
 // Corelight Azure Deployer — backend.
 // Binds to 127.0.0.1 ONLY (never exposed). Serves the API and, in production, the built UI.
-// M1 scope: preflight endpoint + an SSE deploy channel that streams a stubbed run so the
-// UI's live-log pipe is proven end-to-end. Real orchestration lands in M2–M4.
+// M2 scope: preflight + a real deploy pipeline. POST /api/deploy creates a per-run
+// workspace from the form; GET /api/deploy/stream?runId attaches an SSE channel that
+// runs `terraform init` + apply (or plan on dryRun) and streams output live. The
+// Corelight bring-up (Fleet install, token minting, sensor pairing) lands in M3/M4.
 import express from "express";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { existsSync } from "node:fs";
 import { runPreflight } from "./lib/preflight.js";
+import { createRun, getRun, attach } from "./lib/runner.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = dirname(__dirname);
@@ -26,43 +29,32 @@ app.get("/api/preflight", async (_req, res) => {
   }
 });
 
-// SSE deploy stream (M1 STUB). Later this drives terraform + the Corelight orchestrator.
-// Query params carry a summary of the form so we can echo it back for now.
+// Create a deploy run from the submitted form. Returns a runId; the client then opens
+// the SSE stream below to drive and watch it. `dryRun: true` runs `terraform plan` only.
+app.post("/api/deploy", (req, res) => {
+  const form = req.body || {};
+  if (!form.subscriptionId) return res.status(400).json({ error: "subscriptionId is required" });
+  const n = Number(form.sensorCount);
+  if (!Number.isInteger(n) || n < 0 || n > 50) return res.status(400).json({ error: "sensorCount must be 0–50" });
+  if (form.deployFleet === false && n === 0) return res.status(400).json({ error: "Nothing to deploy: no Fleet and 0 sensors" });
+  try {
+    const { id, namePrefix } = createRun(form);
+    res.json({ runId: id, namePrefix });
+  } catch (e) {
+    res.status(500).json({ error: String(e?.message || e) });
+  }
+});
+
+// SSE deploy stream. Attaching starts (or resumes watching) the run's terraform execution.
 app.get("/api/deploy/stream", (req, res) => {
-  res.set({
-    "Content-Type": "text/event-stream",
-    "Cache-Control": "no-cache, no-transform",
-    Connection: "keep-alive",
-  });
-  res.flushHeaders?.();
-
-  const send = (event, data) => res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
-  const sensors = Number(req.query.sensors || 1);
-  const fleet = req.query.deployFleet !== "false";
-
-  const steps = [
-    ["preflight", "Re-checking az login / terraform / uploads..."],
-    ["plan", `Planning: ${fleet ? "1 Fleet + " : "no Fleet, "}${sensors} sensor(s) in a new VNet (10.50.0.0/16)`],
-    ["stub", "M1 scaffold: orchestration not wired yet — this is a demo of the live-log channel."],
-    ["stub", "M2 will run `terraform apply` here and stream its output line by line."],
-    ["done", "Demo stream complete."],
-  ];
-
-  let i = 0;
-  send("log", { level: "info", line: "Connected to deploy stream." });
-  const timer = setInterval(() => {
-    if (i >= steps.length) {
-      send("status", { phase: "complete" });
-      clearInterval(timer);
-      res.end();
-      return;
-    }
-    const [phase, line] = steps[i++];
-    send("log", { level: phase === "done" ? "success" : "info", line });
-    send("status", { phase });
-  }, 700);
-
-  req.on("close", () => clearInterval(timer));
+  const run = getRun(String(req.query.runId || ""));
+  if (!run) {
+    res.set({ "Content-Type": "text/event-stream", "Cache-Control": "no-cache" });
+    res.write(`event: log\ndata: ${JSON.stringify({ level: "error", line: "Unknown or expired runId." })}\n\n`);
+    res.write(`event: end\ndata: ${JSON.stringify({ status: "error" })}\n\n`);
+    return res.end();
+  }
+  attach(run, res);
 });
 
 // Serve the built UI in production (npm start sets SERVE_STATIC=1).
