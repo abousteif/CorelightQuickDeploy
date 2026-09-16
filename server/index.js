@@ -42,6 +42,10 @@ app.post("/api/deploy", (req, res) => {
     if (!form.fleetPemB64) return res.status(400).json({ error: "Deploy Fleet requires the Fleet PEM (cert + license)" });
     if (!form.fleetRepoToken) return res.status(400).json({ error: "Deploy Fleet requires the Fleet repo token" });
   }
+  // Sensor install needs the BYOL repo token (auto-pairing wired for the deploy-Fleet path).
+  if (!form.dryRun && n > 0 && form.deployFleet !== false && !form.sensorRepoToken) {
+    return res.status(400).json({ error: "Deploying sensors requires the sensor (BYOL) repo token" });
+  }
   try {
     const { id, namePrefix } = createRun(form);
     res.json({ runId: id, namePrefix });

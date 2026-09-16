@@ -27,8 +27,9 @@ export default function Results({ data }) {
           <h3>Sensors ({sensors.length})</h3>
           {sensors.map((s) => (
             <ul className="kv" key={s.name}>
-              <li><span>{s.name}</span><code>ssh {data.admin_username}@{s.public_ip}</code></li>
+              <li><span>{s.name}{s.paired ? " ✓ paired" : ""}</span><code>ssh {data.admin_username}@{s.public_ip}</code></li>
               <li><span>mgmt / monitor</span><code>{s.mgmt_private_ip} / {s.monitor_private_ip}</code></li>
+              {s.uid && <li><span>Fleet uid</span><code>{s.uid}</code></li>}
             </ul>
           ))}
         </div>

@@ -11,6 +11,7 @@ import { mkdirSync, cpSync, writeFileSync, readFileSync, existsSync } from "node
 import { randomBytes } from "node:crypto";
 import readline from "node:readline";
 import { bringUpFleet } from "./fleet.js";
+import { bringUpSensors } from "./sensor.js";
 
 const WIN = process.platform === "win32";
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -211,11 +212,31 @@ async function execute(run) {
       emit(run, "log", { level: "info", line: "Skipping Fleet bring-up (using an existing Fleet)." });
     }
 
-    // NOTE (M4): sensor install + per-sensor token minting + pairing hook in here.
+    // 6. Sensor bring-up + pairing (M4). Only the deploy-Fleet path is wired here; the
+    // existing-Fleet path (operator-supplied address + creds) lands in M5.
+    const sensorCount = Array.isArray(run.outputs?.sensors) ? run.outputs.sensors.length : 0;
+    if (sensorCount > 0) {
+      if (run.form.deployFleet !== false && run.fleetAdmin) {
+        await bringUpSensors(run, emit, {
+          apiBase: `https://${run.outputs.fleet_public_ip}`,
+          adminUser: run.fleetAdmin.user,
+          adminPass: run.fleetAdmin.password,
+          pairingUrl: `https://${run.outputs.fleet_private_ip}:1443/fleet/v1/internal/softsensor/websocket`,
+        });
+      } else {
+        emit(run, "log", { level: "info", line: "Sensor VMs created; automatic pairing to an existing Fleet arrives in M5." });
+      }
+    }
+
+    // Build results: outputs + Fleet admin creds + per-sensor pairing status.
     const results = { ...(run.outputs || {}) };
     if (run.fleetAdmin) {
       results.fleet_admin_user = run.fleetAdmin.user;
       results.fleet_admin_password = run.fleetAdmin.password;
+    }
+    if (Array.isArray(run.sensorResults) && Array.isArray(results.sensors)) {
+      const byName = new Map(run.sensorResults.map((s) => [s.name, s]));
+      results.sensors = results.sensors.map((s) => ({ ...s, ...(byName.get(s.name) || {}) }));
     }
     emit(run, "results", results);
     run.status = "complete";
