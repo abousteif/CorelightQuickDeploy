@@ -57,6 +57,8 @@ function toTfvars(form, publicKey) {
     subscription_id: form.subscriptionId,
     location: form.region,
     name_prefix: form.namePrefix,
+    use_existing_rg: !!form.useExistingRg,
+    existing_rg_name: form.useExistingRg ? (form.existingRgName || "") : "",
     admin_username: form.adminUsername || "azureuser",
     ssh_public_key: publicKey,
     admin_source_cidrs: cidrs,

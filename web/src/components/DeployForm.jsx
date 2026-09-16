@@ -12,11 +12,19 @@ function Field({ label, hint, children }) {
   );
 }
 
-export default function DeployForm({ form, setField, onDeploy, running, azure = { status: "idle" }, onAzureLogin }) {
+export default function DeployForm({ form, setField, onDeploy, running, azure = { status: "idle" }, onAzureLogin, rgs = { loading: false, error: null, list: [] }, onLoadResourceGroups }) {
   const set = (k) => (e) => setField(k, e.target.type === "checkbox" ? e.target.checked : e.target.value);
   const setFile = (k) => (e) => setField(k, e.target.files?.[0] || null);
   const cloud = form.cloud || "azure";
   const isAzure = cloud === "azure";
+
+  // Toggle "use existing RG": on turning it on, fetch the available groups immediately.
+  const onToggleExistingRg = (e) => {
+    const on = e.target.checked;
+    setField("useExistingRg", on);
+    if (on) onLoadResourceGroups?.();
+    else setField("existingRgName", "");
+  };
 
   return (
     <form className="card" onSubmit={(e) => { e.preventDefault(); if (isAzure) onDeploy(); }}>
@@ -77,9 +85,31 @@ export default function DeployForm({ form, setField, onDeploy, running, azure = 
         )}
       </div>
 
+      <div className="subpanel">
+        <label className="check">
+          <input type="checkbox" checked={!!form.useExistingRg} onChange={onToggleExistingRg} />
+          <span>Deploy into an existing resource group (needed if you only have Contributor on a specific RG, not the whole subscription)</span>
+        </label>
+        {form.useExistingRg && (
+          <>
+            <Field label="Resource group" hint="Resources are created inside this RG, in its own region.">
+              <div className="row-inline">
+                <select value={form.existingRgName} onChange={set("existingRgName")} disabled={rgs.loading}>
+                  <option value="">{rgs.loading ? "Loading…" : "— select a resource group —"}</option>
+                  {rgs.list.map((g) => <option key={g.name} value={g.name}>{g.name} ({g.location})</option>)}
+                </select>
+                <button className="btn ghost" type="button" disabled={rgs.loading} onClick={() => onLoadResourceGroups?.()}>Refresh</button>
+              </div>
+            </Field>
+            {rgs.error && <p className="warn small">⚠ {rgs.error}</p>}
+            {!rgs.loading && !rgs.error && rgs.list.length === 0 && <p className="muted small">No resource groups found for this subscription — check the subscription ID, or sign in / <code>az login</code>.</p>}
+          </>
+        )}
+      </div>
+
       <div className="grid2">
-        <Field label="Region">
-          <select value={form.region} onChange={set("region")}>
+        <Field label="Region" hint={form.useExistingRg ? "Ignored — resources use the existing RG's region." : undefined}>
+          <select value={form.region} onChange={set("region")} disabled={form.useExistingRg}>
             {REGIONS.map((r) => <option key={r.value} value={r.value}>{r.label}</option>)}
           </select>
         </Field>

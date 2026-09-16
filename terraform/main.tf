@@ -1,35 +1,48 @@
-locals {
-  # Sensors need two NICs: eth0 = management, eth1 = monitoring.
-  fleet_count = var.deploy_fleet ? 1 : 0
-}
-
-# --- Dedicated resource group for this deployment (easy one-shot teardown) ---
+# --- Resource group: create a dedicated new one, OR reuse an existing one. ---
+# Creating a new RG needs subscription-level write; reusing one only needs Contributor on
+# that RG. Exactly one of these is active based on var.use_existing_rg.
 resource "azurerm_resource_group" "rg" {
+  count    = var.use_existing_rg ? 0 : 1
   name     = "${var.name_prefix}-rg"
   location = var.location
   tags     = var.tags
 }
 
+data "azurerm_resource_group" "existing" {
+  count = var.use_existing_rg ? 1 : 0
+  name  = var.existing_rg_name
+}
+
+locals {
+  # Sensors need two NICs: eth0 = management, eth1 = monitoring.
+  fleet_count = var.deploy_fleet ? 1 : 0
+
+  # Resolve the RG name/location from whichever branch is active. When reusing an existing
+  # RG, place resources in that RG's own region (ignore var.location) to avoid a mismatch.
+  rg_name     = var.use_existing_rg ? data.azurerm_resource_group.existing[0].name : azurerm_resource_group.rg[0].name
+  rg_location = var.use_existing_rg ? data.azurerm_resource_group.existing[0].location : azurerm_resource_group.rg[0].location
+}
+
 # --- Network: one VNet, one subnet, one NSG on the subnet ---
 resource "azurerm_virtual_network" "vnet" {
   name                = "${var.name_prefix}-vnet"
-  location            = azurerm_resource_group.rg.location
-  resource_group_name = azurerm_resource_group.rg.name
+  location            = local.rg_location
+  resource_group_name = local.rg_name
   address_space       = [var.vnet_cidr]
   tags                = var.tags
 }
 
 resource "azurerm_subnet" "subnet" {
   name                 = "${var.name_prefix}-subnet"
-  resource_group_name  = azurerm_resource_group.rg.name
+  resource_group_name  = local.rg_name
   virtual_network_name = azurerm_virtual_network.vnet.name
   address_prefixes     = [var.subnet_cidr]
 }
 
 resource "azurerm_network_security_group" "nsg" {
   name                = "${var.name_prefix}-nsg"
-  location            = azurerm_resource_group.rg.location
-  resource_group_name = azurerm_resource_group.rg.name
+  location            = local.rg_location
+  resource_group_name = local.rg_name
   tags                = var.tags
 
   # SSH for the deployer to install/configure Fleet + sensors.
@@ -70,8 +83,8 @@ resource "azurerm_subnet_network_security_group_association" "assoc" {
 resource "azurerm_public_ip" "fleet" {
   count               = local.fleet_count
   name                = "${var.name_prefix}-fleet-pip"
-  location            = azurerm_resource_group.rg.location
-  resource_group_name = azurerm_resource_group.rg.name
+  location            = local.rg_location
+  resource_group_name = local.rg_name
   allocation_method   = "Static"
   sku                 = "Standard"
   domain_name_label   = var.fleet_dns_label != "" ? var.fleet_dns_label : null
@@ -81,8 +94,8 @@ resource "azurerm_public_ip" "fleet" {
 resource "azurerm_network_interface" "fleet" {
   count               = local.fleet_count
   name                = "${var.name_prefix}-fleet-nic"
-  location            = azurerm_resource_group.rg.location
-  resource_group_name = azurerm_resource_group.rg.name
+  location            = local.rg_location
+  resource_group_name = local.rg_name
   tags                = var.tags
 
   ip_configuration {
@@ -97,8 +110,8 @@ resource "azurerm_linux_virtual_machine" "fleet" {
   count                 = local.fleet_count
   name                  = "${var.name_prefix}-fleet"
   computer_name         = "${var.name_prefix}-fleet"
-  location              = azurerm_resource_group.rg.location
-  resource_group_name   = azurerm_resource_group.rg.name
+  location              = local.rg_location
+  resource_group_name   = local.rg_name
   size                  = var.fleet_vm_size
   admin_username        = var.admin_username
   network_interface_ids = [azurerm_network_interface.fleet[0].id]
@@ -127,8 +140,8 @@ resource "azurerm_linux_virtual_machine" "fleet" {
 resource "azurerm_public_ip" "sensor" {
   count               = var.sensor_count
   name                = "${var.name_prefix}-sensor-${count.index + 1}-pip"
-  location            = azurerm_resource_group.rg.location
-  resource_group_name = azurerm_resource_group.rg.name
+  location            = local.rg_location
+  resource_group_name = local.rg_name
   allocation_method   = "Static"
   sku                 = "Standard"
   tags                = var.tags
@@ -138,8 +151,8 @@ resource "azurerm_public_ip" "sensor" {
 resource "azurerm_network_interface" "sensor_mgmt" {
   count               = var.sensor_count
   name                = "${var.name_prefix}-sensor-${count.index + 1}-mgmt-nic"
-  location            = azurerm_resource_group.rg.location
-  resource_group_name = azurerm_resource_group.rg.name
+  location            = local.rg_location
+  resource_group_name = local.rg_name
   tags                = var.tags
 
   ip_configuration {
@@ -154,8 +167,8 @@ resource "azurerm_network_interface" "sensor_mgmt" {
 resource "azurerm_network_interface" "sensor_monitor" {
   count               = var.sensor_count
   name                = "${var.name_prefix}-sensor-${count.index + 1}-monitor-nic"
-  location            = azurerm_resource_group.rg.location
-  resource_group_name = azurerm_resource_group.rg.name
+  location            = local.rg_location
+  resource_group_name = local.rg_name
   tags                = var.tags
 
   ip_configuration {
@@ -169,8 +182,8 @@ resource "azurerm_linux_virtual_machine" "sensor" {
   count               = var.sensor_count
   name                = "${var.name_prefix}-sensor-${count.index + 1}"
   computer_name       = "${var.name_prefix}-sensor-${count.index + 1}"
-  location            = azurerm_resource_group.rg.location
-  resource_group_name = azurerm_resource_group.rg.name
+  location            = local.rg_location
+  resource_group_name = local.rg_name
   size                = var.sensor_vm_size
   admin_username      = var.admin_username
   tags                = var.tags

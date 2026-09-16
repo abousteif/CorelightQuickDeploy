@@ -14,6 +14,23 @@ variable "name_prefix" {
   description = "Short unique prefix for all resource names in this deployment (e.g. cqd-a1b2c3)."
 }
 
+# Resource-group strategy. Creating a NEW resource group requires write access at the
+# subscription root (Contributor on the subscription). Many operators only have Contributor
+# scoped to a specific, pre-existing resource group — in that case set use_existing_rg=true
+# and existing_rg_name, and the module reads that RG (data source) and creates all resources
+# inside it instead of trying to create a new one.
+variable "use_existing_rg" {
+  type        = bool
+  description = "Deploy into an existing resource group (read it) instead of creating a new one."
+  default     = false
+}
+
+variable "existing_rg_name" {
+  type        = string
+  description = "Name of the existing resource group to deploy into (required when use_existing_rg=true)."
+  default     = ""
+}
+
 variable "admin_username" {
   type        = string
   description = "Linux admin user created on every VM."

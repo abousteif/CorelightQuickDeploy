@@ -77,6 +77,10 @@ details.subpanel[open] > summary { margin-bottom: 8px; }
 .btn.primary:disabled { opacity: .6; cursor: default; }
 .btn.ghost { padding: 5px 10px; font-size: 12px; }
 
+/* inline select + button (e.g. resource-group picker + Refresh) */
+.row-inline { display: flex; gap: 8px; align-items: center; }
+.row-inline select { flex: 1; min-width: 0; }
+
 /* log */
 .log-card { position: sticky; top: 18px; }
 .phase { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; }

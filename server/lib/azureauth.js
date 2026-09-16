@@ -12,6 +12,7 @@
 // Graph + ARM are called with plain fetch using tokens from @azure/identity (no heavy SDKs).
 import { DeviceCodeCredential, ClientSecretCredential } from "@azure/identity";
 import { randomUUID } from "node:crypto";
+import { execFile } from "node:child_process";
 
 const ARM = "https://management.azure.com";
 const ARM_SCOPE = `${ARM}/.default`;
@@ -103,6 +104,45 @@ export async function listSubscriptions(sessionId) {
     .filter((x) => x.state === "Enabled")
     .map((x) => ({ subscriptionId: x.subscriptionId, displayName: x.displayName, tenantId: x.tenantId }));
   return s.subscriptions;
+}
+
+// List the resource groups the operator can see in a subscription, so they can pick an
+// EXISTING one to deploy into (needed when they only have Contributor on a specific RG, not
+// the whole subscription — creating a new RG would 403). Works for both auth paths: if an
+// in-app sign-in session is present we use its ARM token; otherwise we fall back to the
+// operator's `az login` session via the CLI (the same session Terraform's fallback uses).
+export async function listResourceGroups({ sessionId, subscriptionId } = {}) {
+  if (!subscriptionId) throw new Error("subscriptionId is required to list resource groups.");
+  const s = sessionId ? sessions.get(sessionId) : null;
+  if (s?.status === "authenticated" && s.credential) {
+    const token = (await s.credential.getToken(ARM_SCOPE)).token;
+    const r = await fetch(`${ARM}/subscriptions/${subscriptionId}/resourcegroups?api-version=2021-04-01`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!r.ok) throw new Error(`Listing resource groups failed: HTTP ${r.status} ${await r.text()}`);
+    const j = await r.json();
+    return (j.value || []).map((x) => ({ name: x.name, location: x.location })).sort((a, b) => a.name.localeCompare(b.name));
+  }
+  // No sign-in session → use the Azure CLI session.
+  return listResourceGroupsViaCli(subscriptionId);
+}
+
+function listResourceGroupsViaCli(subscriptionId) {
+  return new Promise((resolve, reject) => {
+    execFile("az", ["group", "list", "--subscription", subscriptionId, "-o", "json"],
+      { windowsHide: true, maxBuffer: 8 * 1024 * 1024 },
+      (err, stdout) => {
+        if (err) {
+          return reject(new Error("Couldn't list resource groups via the Azure CLI. Sign in with your browser above, or run `az login` and retry."));
+        }
+        try {
+          const arr = JSON.parse(stdout || "[]");
+          resolve(arr.map((x) => ({ name: x.name, location: x.location })).sort((a, b) => a.name.localeCompare(b.name)));
+        } catch (e) {
+          reject(new Error(`Couldn't parse resource groups: ${e?.message || e}`));
+        }
+      });
+  });
 }
 
 async function graph(session, method, path, body) {

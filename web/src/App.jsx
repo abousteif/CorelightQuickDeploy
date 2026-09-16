@@ -13,6 +13,8 @@ export default function App() {
   const [form, setForm] = useState({
     cloud: DEFAULTS.cloud,
     subscriptionId: "",
+    useExistingRg: false,
+    existingRgName: "",
     region: DEFAULTS.region,
     fleetVmSize: DEFAULTS.fleetVmSize,
     sensorVmSize: DEFAULTS.sensorVmSize,
@@ -36,8 +38,26 @@ export default function App() {
   const [results, setResults] = useState(null);
   // In-app Azure sign-in (device code) — replaces the az CLI dependency.
   const [azure, setAzure] = useState({ status: "idle", sessionId: null, userCode: null, verificationUri: null, message: null, user: null, subscriptions: [], error: null });
+  // Existing resource groups the operator can pick from (for RG-scoped Contributor access).
+  const [rgs, setRgs] = useState({ loading: false, error: null, list: [] });
 
   const setField = (k, v) => setForm((f) => ({ ...f, [k]: v }));
+
+  // Fetch the resource groups visible in the selected subscription (via sign-in session or az CLI).
+  const loadResourceGroups = useCallback(async () => {
+    const subscriptionId = form.subscriptionId;
+    if (!subscriptionId) { setRgs({ loading: false, error: "Enter or select a subscription first.", list: [] }); return; }
+    setRgs({ loading: true, error: null, list: [] });
+    try {
+      const qs = new URLSearchParams({ subscriptionId, sessionId: form.azureSessionId || "" });
+      const r = await fetch(`/api/azure/resourcegroups?${qs}`);
+      const data = await r.json();
+      if (!r.ok) throw new Error(data.error || `HTTP ${r.status}`);
+      setRgs({ loading: false, error: null, list: data.resourceGroups || [] });
+    } catch (e) {
+      setRgs({ loading: false, error: e.message, list: [] });
+    }
+  }, [form.subscriptionId, form.azureSessionId]);
 
   // Kick off a device-code sign-in; the polling effect below drives it to completion.
   const startAzureLogin = useCallback(async () => {
@@ -126,6 +146,8 @@ export default function App() {
         body: JSON.stringify({
           cloud: form.cloud,
           subscriptionId: form.subscriptionId,
+          useExistingRg: form.useExistingRg,
+          existingRgName: form.existingRgName,
           region: form.region,
           fleetVmSize: form.fleetVmSize,
           sensorVmSize: form.sensorVmSize,
@@ -182,7 +204,7 @@ export default function App() {
       <main className="layout">
         <div className="col">
           <Preflight data={pf} loading={pfLoading} onRefresh={loadPreflight} />
-          <DeployForm form={form} setField={setField} onDeploy={onDeploy} running={running} azure={azure} onAzureLogin={startAzureLogin} />
+          <DeployForm form={form} setField={setField} onDeploy={onDeploy} running={running} azure={azure} onAzureLogin={startAzureLogin} rgs={rgs} onLoadResourceGroups={loadResourceGroups} />
         </div>
         <div className="col">
           <LogPanel lines={lines} phase={phase} running={running} />

@@ -1,6 +1,6 @@
 output "resource_group_name" {
-  description = "The dedicated resource group holding this deployment (delete it to tear everything down)."
-  value       = azurerm_resource_group.rg.name
+  description = "The resource group holding this deployment."
+  value       = local.rg_name
 }
 
 output "fleet_deployed" {

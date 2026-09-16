@@ -10,7 +10,7 @@ import { dirname, join } from "node:path";
 import { existsSync, readFileSync } from "node:fs";
 import { runPreflight } from "./lib/preflight.js";
 import { createRun, getRun, attach } from "./lib/runner.js";
-import { startDeviceLogin, getLoginStatus, listSubscriptions } from "./lib/azureauth.js";
+import { startDeviceLogin, getLoginStatus, listSubscriptions, listResourceGroups } from "./lib/azureauth.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = dirname(__dirname);
@@ -54,6 +54,20 @@ app.get("/api/azure/subscriptions", async (req, res) => {
   }
 });
 
+// List existing resource groups in a subscription so the operator can deploy into one they
+// already have rights to (instead of creating a new RG, which needs subscription-level write).
+app.get("/api/azure/resourcegroups", async (req, res) => {
+  try {
+    const groups = await listResourceGroups({
+      sessionId: String(req.query.sessionId || ""),
+      subscriptionId: String(req.query.subscriptionId || ""),
+    });
+    res.json({ resourceGroups: groups });
+  } catch (e) {
+    res.status(400).json({ error: String(e?.message || e) });
+  }
+});
+
 // Create a deploy run from the submitted form. Returns a runId; the client then opens
 // the SSE stream below to drive and watch it. `dryRun: true` runs `terraform plan` only.
 app.post("/api/deploy", (req, res) => {
@@ -62,6 +76,7 @@ app.post("/api/deploy", (req, res) => {
   const cloud = form.cloud || "azure";
   if (cloud !== "azure") return res.status(400).json({ error: `Cloud '${cloud}' is not supported yet — only Azure is available.` });
   if (!form.subscriptionId) return res.status(400).json({ error: "subscriptionId is required" });
+  if (form.useExistingRg && !form.existingRgName) return res.status(400).json({ error: "Select an existing resource group, or switch to creating a new one." });
   const n = Number(form.sensorCount);
   if (!Number.isInteger(n) || n < 0 || n > 50) return res.status(400).json({ error: "sensorCount must be 0–50" });
   if (form.deployFleet === false && n === 0) return res.status(400).json({ error: "Nothing to deploy: no Fleet and 0 sensors" });
