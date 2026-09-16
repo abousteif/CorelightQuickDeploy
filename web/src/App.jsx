@@ -13,7 +13,10 @@ export default function App() {
   const [form, setForm] = useState({
     cloud: DEFAULTS.cloud,
     subscriptionId: "",
-    useExistingRg: false,
+    // Always deploy into an existing resource group the operator picks (the RBAC-safe path):
+    // creating a new RG needs subscription-level write many operators don't have. If they DO
+    // have it, they create the RG in Azure and hit Refresh.
+    useExistingRg: true,
     existingRgName: "",
     region: DEFAULTS.region,
     fleetVmSize: DEFAULTS.fleetVmSize,
@@ -114,6 +117,12 @@ export default function App() {
 
   useEffect(() => { loadPreflight(); }, [loadPreflight]);
 
+  // Auto-load resource groups whenever a subscription becomes known (from preflight, sign-in,
+  // or manual entry) so the picker is populated without an extra click.
+  useEffect(() => {
+    if (form.subscriptionId) loadResourceGroups();
+  }, [form.subscriptionId, form.azureSessionId, loadResourceGroups]);
+
   const addLine = (l) => setLines((prev) => [...prev, { ts: now(), ...l }]);
 
   // Read a File as base64 (no data: prefix) for JSON upload.
@@ -191,7 +200,7 @@ export default function App() {
     <div className="app">
       <header className="topbar">
         <div>
-          <h1>Corelight Quick Deploy</h1>
+          <h1><span className="brand">Corelight</span> Quick Deploy</h1>
           <p className="muted">
             One-button Fleet Manager + sensor deployment ·{" "}
             <span className="badge" title={`Built ${new Date(__BUILD_TIME__).toLocaleString()}`}>
