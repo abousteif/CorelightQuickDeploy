@@ -13,8 +13,6 @@ function Field({ label, hint, children }) {
 }
 
 export default function DeployForm({ form, setField, onDeploy, running, azure = { status: "idle" }, onAzureLogin }) {
-  const sensorSize = VM_SIZES.find((s) => s.value === form.sensorVmSize);
-  const fleetSize = VM_SIZES.find((s) => s.value === form.fleetVmSize);
   const set = (k) => (e) => setField(k, e.target.type === "checkbox" ? e.target.checked : e.target.value);
   const setFile = (k) => (e) => setField(k, e.target.files?.[0] || null);
   const cloud = form.cloud || "azure";
@@ -92,7 +90,6 @@ export default function DeployForm({ form, setField, onDeploy, running, azure = 
           </select>
         </Field>
       </div>
-      {sensorSize?.mlWarn && <p className="warn small">⚠ Sensor size {sensorSize.label} is below the 8 vCPU / 32 GiB needed for ML / Anomaly Engine — those features will be disabled on sensors.</p>}
 
       <Field label="Number of sensors">
         <input type="number" min="0" max="20" value={form.sensorCount} onChange={set("sensorCount")} />
@@ -110,7 +107,6 @@ export default function DeployForm({ form, setField, onDeploy, running, azure = 
               {VM_SIZES.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
             </select>
           </Field>
-          {fleetSize?.mlWarn && <p className="warn small">⚠ Fleet size {fleetSize.label} is below the 8 vCPU / 32 GiB Corelight recommends for the Fleet Manager.</p>}
           <Field label="Fleet repo token" hint="Your Corelight fleet-stable pull token.">
             <input value={form.fleetRepoToken} onChange={set("fleetRepoToken")} type="password" autoComplete="off" />
           </Field>
