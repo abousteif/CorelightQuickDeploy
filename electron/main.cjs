@@ -12,6 +12,16 @@ const { execSync } = require("node:child_process");
 const PORT = Number(process.env.PORT || 8787);
 const HOST = "127.0.0.1";
 
+// Safety net: a stray async error (e.g. an SSH socket reset during bring-up) must never crash
+// the app or pop Electron's "Uncaught Exception" dialog. Deploy errors are already surfaced in
+// the run log; anything that slips past that is logged to the console, not fatal.
+process.on("uncaughtException", (err) => {
+  console.error("[cqd] uncaughtException (ignored):", err?.stack || err);
+});
+process.on("unhandledRejection", (reason) => {
+  console.error("[cqd] unhandledRejection (ignored):", reason);
+});
+
 // A GUI app launched from Finder/Dock inherits a stripped-down PATH (roughly
 // /usr/bin:/bin:/usr/sbin:/sbin) that omits Homebrew, /usr/local/bin, pyenv, etc. — so the
 // Azure CLI (`az`) the operator installed and `az login`-ed in a terminal is invisible to

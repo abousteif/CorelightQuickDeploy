@@ -1,20 +1,24 @@
 # Corelight Quick Deploy
 
 A **local, one-button web app** for Corelight SEs to deploy a Fleet Manager + N Software
-Sensors into the cloud. Azure is supported today; the UI is already structured for additional
-providers (AWS is a visible placeholder). Runs entirely on your machine (bound to `127.0.0.1`), signs in to Azure
-from the browser (no CLI), and streams live progress. Ships either as source you run with
-Node, or as a **double-clickable desktop app** (`.dmg` / `.exe` / `.AppImage`) that bundles
+Sensors into the cloud — **Azure or AWS**. Runs entirely on your machine (bound to `127.0.0.1`),
+signs in to your cloud from the browser (Azure device code / AWS IAM Identity Center — no CLI),
+and streams live progress. Ships either as source you run with Node, or as a
+**double-clickable desktop app** (`.dmg` / `.exe` / `.AppImage`) that bundles
 Node + Terraform and needs nothing preinstalled.
 
-> **Status: M5 (feature-complete).** One button provisions the infra (new VNet, subnet, NSG,
-> optional Fleet VM + N sensor VMs), brings up the Fleet Manager (install → PEM → start → admin),
-> then for each sensor mints a pairing token, installs `corelight-sensor`, writes
-> `corelightctl.yaml`, and deploys + pairs it — all streamed live. Unchecking **Deploy Fleet**
-> pairs sensors to an **existing** Fleet instead: supply its pairing address + admin creds
-> (auto-mints a token per sensor), or paste pre-minted tokens + `server_sslname`.
+> **Status: feature-complete on both clouds, live-proven end-to-end.** One button provisions the
+> infra (new VNet/VPC, subnets, NSG/security groups, optional Fleet VM + N sensor VMs), brings up
+> the Fleet Manager (install → PEM → start → admin), then for each sensor mints a pairing token,
+> installs `corelight-sensor`, writes `corelightctl.yaml`, and deploys + pairs it — all streamed
+> live, with a STOP-and-destroy button and failure rollback. Unchecking **Deploy Fleet** pairs
+> sensors to an **existing** Fleet instead: supply its pairing address + admin creds (auto-mints a
+> token per sensor), or paste pre-minted tokens + `server_sslname`.
 >
-> *Not yet run end-to-end against live VMs — validated up to `terraform plan` + module/build checks.*
+> *Both the **Azure** and **AWS** paths have been run end-to-end against live VMs — Fleet up,
+> sensor installed and paired. On AWS the interface mapping is the reverse of Azure
+> (monitoring = `eth0` primary ENI, management = `eth1` secondary ENI + Elastic IP), with a
+> dual-ENI policy-routing fix applied via `user_data`.*
 
 ## Prerequisites (any OS — Windows, macOS, Linux)
 - **Node.js** LTS (18+) — *only needed to run from source. The packaged desktop app (`.dmg` /
@@ -68,9 +72,13 @@ from macOS. Builds are unsigned by default; add a signing identity for distribut
   On success a results card shows the Fleet UI URL, the sensor list, and ready-to-copy SSH commands.
 
 ## Tearing down
-Each deployment lands in its own resource group named `cqd-<runid>-rg`. To remove everything, delete
-that resource group (Azure Portal or `az group delete -n cqd-<runid>-rg`), or run
-`terraform destroy` inside the run's workspace at `runs/<id>/tf/`.
+The in-app **STOP** button halts a running deploy and destroys whatever it created; a failed run
+offers a rollback that does the same. To tear down a completed run manually, run
+`terraform destroy` inside the run's workspace at `runs/<id>/tf/`. On **Azure** each deployment also
+lands in its own resource group named `cqd-<runid>-rg`, so deleting that group (Azure Portal or
+`az group delete -n cqd-<runid>-rg`) removes everything. On **AWS** everything lives in the per-run
+VPC created by the module — `terraform destroy` in the run workspace removes the VPC, instances,
+ENIs, and Elastic IPs.
 
 ## Design (see also the plan in project memory)
 - **Frontend**: React + Vite. **Backend**: Node/Express, localhost-only, SSE for progress.
@@ -92,7 +100,8 @@ that resource group (Azure Portal or `az group delete -n cqd-<runid>-rg`), or ru
 - **M3** ✅ Fleet bring-up: install → PEM → start → create admin
 - **M4** ✅ per-sensor token minting + pairing + verify → **end-to-end one button** (deploy-Fleet path)
 - **M5** ✅ existing-Fleet path (operator-supplied Fleet address + admin creds, or pasted tokens)
+- **AWS** ✅ full parity: provider abstraction, AWS IAM Identity Center (SSO) browser sign-in,
+  `terraform/aws/` module (new VPC, dual-ENI sensors, Elastic IPs, eth1 policy-routing `user_data`),
+  interface flip (monitoring `eth0` / management `eth1`) — **live-proven end-to-end**
 
-*Next: a live end-to-end run against real Azure VMs, and Windows verification.*
-
-*Teardown is intentionally SE-managed (delete the `cqd-<runid>-rg` resource group) — there is no Destroy button.*
+*Next: Windows verification; AWS "peer to an existing Fleet" (VPC peering + route-table entries).*

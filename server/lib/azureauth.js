@@ -93,6 +93,31 @@ export function getLoginStatus(sessionId) {
   return { status: s.status, user: s.user, tenantId: s.tenantId, error: s.error, hasSubscriptions: !!s.subscriptions };
 }
 
+// Pre-deploy freshness check: is this in-app sign-in still usable RIGHT NOW? Actually acquires
+// an ARM token (which silently refreshes if the refresh token is still valid), so it catches an
+// expired sign-in BEFORE we start a long deploy — instead of failing 30 min in or silently
+// falling back to `az`. Returns { fresh, reason, message, user?, expiresOn? }.
+export async function checkSession(sessionId) {
+  const s = sessionId ? sessions.get(sessionId) : null;
+  if (!s) {
+    return { fresh: false, reason: "not-found", message: "No Azure sign-in found — sign in with your browser, then deploy." };
+  }
+  if (s.status !== "authenticated" || !s.credential) {
+    return { fresh: false, reason: "incomplete", message: "Azure sign-in isn't finished — complete the browser sign-in, then deploy." };
+  }
+  try {
+    const tok = await s.credential.getToken(ARM_SCOPE);
+    return { fresh: true, user: s.user, expiresOn: tok?.expiresOnTimestamp || null };
+  } catch (e) {
+    return {
+      fresh: false,
+      reason: "expired",
+      message: "Your Azure sign-in expired — click Sign in to Azure to re-authenticate, then deploy.",
+      detail: String(e?.message || e),
+    };
+  }
+}
+
 // List subscriptions the signed-in user can access.
 export async function listSubscriptions(sessionId) {
   const s = requireAuthed(sessionId);
@@ -143,6 +168,103 @@ function listResourceGroupsViaCli(subscriptionId) {
         }
       });
   });
+}
+
+// --- VM size discovery -----------------------------------------------------------------
+// List the VM sizes that can ACTUALLY be deployed into a given location for this subscription:
+// real SKUs, x86 + premium-storage capable (our image + Premium_LRS os disk), not restricted,
+// and — crucially — within the family's remaining vCPU quota so we never offer a size that
+// would 409 on "exceeding approved … Cores quota". Sorted smallest-first so the UI can default
+// to the lowest. Works via the sign-in ARM token, or falls back to the `az` CLI session.
+export async function listVmSizes({ sessionId, subscriptionId, location } = {}) {
+  if (!subscriptionId) throw new Error("subscriptionId is required to list VM sizes.");
+  if (!location) throw new Error("location is required to list VM sizes.");
+  const s = sessionId ? sessions.get(sessionId) : null;
+  if (s?.status === "authenticated" && s.credential) {
+    const token = (await s.credential.getToken(ARM_SCOPE)).token;
+    const filter = encodeURIComponent(`location eq '${location}'`);
+    const skus = await armGetAll(token, `${ARM}/subscriptions/${subscriptionId}/providers/Microsoft.Compute/skus?api-version=2021-07-01&$filter=${filter}`);
+    const usage = await armGet(token, `${ARM}/subscriptions/${subscriptionId}/providers/Microsoft.Compute/locations/${location}/usages?api-version=2021-07-01`);
+    return buildVmSizes(skus, usage.value || []);
+  }
+  return listVmSizesViaCli(subscriptionId, location);
+}
+
+async function armGet(token, url) {
+  const r = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+  if (!r.ok) throw new Error(`Azure GET failed: HTTP ${r.status} ${await r.text()}`);
+  return r.json();
+}
+
+// Follow @odata.nextLink so we get every SKU page, not just the first.
+async function armGetAll(token, url) {
+  const items = [];
+  let next = url;
+  while (next) {
+    const j = await armGet(token, next);
+    for (const v of j.value || []) items.push(v);
+    next = j.nextLink || j["@odata.nextLink"] || null;
+  }
+  return items;
+}
+
+// Shared filter/sort used by both the ARM and CLI paths.
+function buildVmSizes(skus, usages) {
+  // family (lowercased) -> remaining cores; plus the total regional vCPU headroom.
+  const famRemaining = new Map();
+  let totalRemaining = Infinity;
+  for (const u of usages || []) {
+    const key = String(u.name?.value || "").toLowerCase();
+    const remaining = (Number(u.limit) || 0) - (Number(u.currentValue) || 0);
+    if (key === "cores") totalRemaining = remaining; // "Total Regional vCPUs"
+    else famRemaining.set(key, remaining);
+  }
+  const seen = new Set();
+  const out = [];
+  for (const sku of skus || []) {
+    if (sku.resourceType !== "virtualMachines") continue;
+    // Plain general-purpose D_s family only (e.g. Standard_D4s_v3): 4 GiB/core + premium storage,
+    // the standard Corelight recommendation. Excludes the l/a/d low-mem, AMD, and local-disk
+    // variants and the huge zoo of other families that would bury the dropdown.
+    if (!/^Standard_D\d+s_v\d+$/.test(sku.name || "")) continue;
+    if (seen.has(sku.name)) continue; // SKUs repeat per zone
+    const caps = Object.fromEntries((sku.capabilities || []).map((c) => [c.name, c.value]));
+    if (String(caps.PremiumIO) !== "True") continue; // os_disk = Premium_LRS
+    if (caps.CpuArchitectureType && caps.CpuArchitectureType !== "x64") continue; // almalinux x86_64
+    const vCPUs = Number(caps.vCPUs || 0);
+    const memoryGB = Number(caps.MemoryGB || 0);
+    if (!vCPUs || vCPUs < 2 || vCPUs > 64) continue;
+    // Availability: drop SKUs restricted for this subscription/location.
+    if ((sku.restrictions || []).some((r) => /NotAvailableForSubscription/i.test(r.reasonCode || ""))) continue;
+    // Quota: must fit in the family's remaining cores AND the total regional headroom.
+    const fam = String(sku.family || "").toLowerCase();
+    const remaining = famRemaining.has(fam) ? famRemaining.get(fam) : Infinity;
+    if (vCPUs > remaining || vCPUs > totalRemaining) continue;
+    seen.add(sku.name);
+    out.push({ name: sku.name, vCPUs, memoryGB, family: sku.family, familyRemaining: Number.isFinite(remaining) ? remaining : null });
+  }
+  out.sort((a, b) => a.vCPUs - b.vCPUs || a.memoryGB - b.memoryGB || a.name.localeCompare(b.name));
+  return out;
+}
+
+function listVmSizesViaCli(subscriptionId, location) {
+  const run = (args, maxBuffer) => new Promise((resolve, reject) => {
+    execFile("az", args, { windowsHide: true, maxBuffer }, (err, stdout) => {
+      if (err) return reject(err);
+      try { resolve(JSON.parse(stdout || "[]")); } catch (e) { reject(e); }
+    });
+  });
+  return (async () => {
+    let skus;
+    try {
+      skus = await run(["vm", "list-skus", "--subscription", subscriptionId, "--location", location, "--resource-type", "virtualMachines", "-o", "json"], 48 * 1024 * 1024);
+    } catch {
+      throw new Error("Couldn't list VM sizes via the Azure CLI. Sign in with your browser above, or run `az login` and retry.");
+    }
+    let usages = [];
+    try { usages = await run(["vm", "list-usage", "--subscription", subscriptionId, "--location", location, "-o", "json"], 8 * 1024 * 1024); } catch { /* quota best-effort */ }
+    return buildVmSizes(skus, usages);
+  })();
 }
 
 async function graph(session, method, path, body) {
@@ -253,5 +375,155 @@ export async function deleteApplication(sessionId, appObjectId) {
     return true;
   } catch {
     return false;
+  }
+}
+
+// --- VNet peering to an existing Fleet (sensors-only path) -------------------------------
+// When the operator points sensors at an existing Fleet reachable only on its PRIVATE IP,
+// the sensor VNet this run creates can't reach it. These helpers auto-discover the Fleet's
+// VNet + NIC NSG from just its private IP, then peer the two VNets and open the Fleet NSG
+// for :1443 from the sensor CIDR — the proven manual recipe, done in-app and reversible.
+const NET_API = "2023-05-01";
+
+async function armPut(token, url, body) {
+  const r = await fetch(url, {
+    method: "PUT",
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!r.ok) throw new Error(`Azure PUT failed: HTTP ${r.status} ${await r.text()}`);
+  return r.json().catch(() => ({}));
+}
+
+async function armDelete(token, url) {
+  const r = await fetch(url, { method: "DELETE", headers: { Authorization: `Bearer ${token}` } });
+  if (!r.ok && r.status !== 404 && r.status !== 204) throw new Error(`Azure DELETE failed: HTTP ${r.status} ${await r.text()}`);
+}
+
+const rgOf = (id) => /resourceGroups\/([^/]+)/i.exec(id || "")?.[1] || null;
+
+// Find the Fleet's VNet + NSG given its private IP, mirroring
+// `az network nic list --query "[?ipConfigurations[?privateIPAddress=='<ip>']]"`.
+// Returns the VNet id/name/CIDR + the NSG (NIC-level, else subnet-level) for operator confirm.
+export async function discoverFleetNetwork({ sessionId, subscriptionId, fleetIp } = {}) {
+  const s = requireAuthed(sessionId);
+  if (!subscriptionId) throw new Error("subscriptionId is required.");
+  const ip = String(fleetIp || "").trim();
+  if (!ip) throw new Error("Fleet private IP is required.");
+  const token = (await s.credential.getToken(ARM_SCOPE)).token;
+  const nics = await armGetAll(token, `${ARM}/subscriptions/${subscriptionId}/providers/Microsoft.Network/networkInterfaces?api-version=${NET_API}`);
+  let ipc = null;
+  let nic = null;
+  for (const n of nics) {
+    const hit = (n.properties?.ipConfigurations || []).find((c) => c.properties?.privateIPAddress === ip);
+    if (hit) { ipc = hit; nic = n; break; }
+  }
+  if (!nic) throw new Error(`No network interface with private IP ${ip} found in this subscription. Is the Fleet in this subscription?`);
+  const subnetId = ipc.properties?.subnet?.id;
+  if (!subnetId) throw new Error(`Interface for ${ip} has no subnet — cannot determine its VNet.`);
+  const vnetId = subnetId.replace(/\/subnets\/[^/]+$/i, "");
+  const vnetName = vnetId.split("/").pop();
+  const vnet = await armGet(token, `${ARM}${vnetId}?api-version=${NET_API}`);
+  const vnetCidr = vnet.properties?.addressSpace?.addressPrefixes || [];
+  // NSG: prefer the one bound to the Fleet NIC; fall back to the subnet's.
+  let nsgId = nic.properties?.networkSecurityGroup?.id || null;
+  if (!nsgId) {
+    const subnet = await armGet(token, `${ARM}${subnetId}?api-version=${NET_API}`);
+    nsgId = subnet.properties?.networkSecurityGroup?.id || null;
+  }
+  return {
+    fleetIp: ip,
+    nicName: nic.name,
+    vnetId,
+    vnetName,
+    vnetRg: rgOf(vnetId),
+    vnetCidr,
+    location: vnet.location || null,
+    subnetId,
+    nsgId,
+    nsgName: nsgId ? nsgId.split("/").pop() : null,
+    nsgRg: nsgId ? rgOf(nsgId) : null,
+  };
+}
+
+// Peer the run's sensor VNet to the Fleet's VNet (both directions) and ensure the Fleet NSG
+// admits TCP 1443 from the sensor CIDR. Idempotent. Returns the FLEET-side artifacts to remove
+// on rollback — the sensor-side peering is a child of the sensor VNet and dies with it.
+export async function peerSensorToFleet({ sessionId, sensorVnetId, sensorCidr, fleet, log } = {}) {
+  const s = requireAuthed(sessionId);
+  const token = async () => (await s.credential.getToken(ARM_SCOPE)).token;
+  if (!sensorVnetId) throw new Error("sensor VNet id is required for peering.");
+  if (!fleet?.vnetId) throw new Error("Fleet VNet id is required for peering.");
+  const sensorVnetName = sensorVnetId.split("/").pop();
+  const sensorRg = rgOf(sensorVnetId);
+
+  // 1. sensor VNet → Fleet VNet
+  const p1 = "cqd-to-fleet";
+  await armPut(await token(), `${ARM}${sensorVnetId}/virtualNetworkPeerings/${p1}?api-version=${NET_API}`, {
+    properties: { remoteVirtualNetwork: { id: fleet.vnetId }, allowVirtualNetworkAccess: true },
+  });
+  log?.("Peered sensor VNet → Fleet VNet.");
+
+  // 2. Fleet VNet → sensor VNet (uniquely named so multiple runs can coexist)
+  const p2 = `cqd-${sensorRg}-${sensorVnetName}`.toLowerCase().replace(/[^a-z0-9._-]/g, "-").slice(0, 78);
+  await armPut(await token(), `${ARM}${fleet.vnetId}/virtualNetworkPeerings/${p2}?api-version=${NET_API}`, {
+    properties: { remoteVirtualNetwork: { id: sensorVnetId }, allowVirtualNetworkAccess: true },
+  });
+  log?.("Peered Fleet VNet → sensor VNet.");
+
+  // 3. Fleet NSG: allow inbound 1443 from the sensor CIDR, if not already permitted.
+  let nsgRule = null;
+  if (fleet.nsgId && sensorCidr) {
+    const nsg = await armGet(await token(), `${ARM}${fleet.nsgId}?api-version=${NET_API}`);
+    const rules = nsg.properties?.securityRules || [];
+    const admits = rules.some((r) => {
+      const p = r.properties || {};
+      if (p.direction !== "Inbound" || p.access !== "Allow" || (p.protocol !== "Tcp" && p.protocol !== "*")) return false;
+      const ports = [p.destinationPortRange, ...(p.destinationPortRanges || [])].filter(Boolean);
+      const srcs = [p.sourceAddressPrefix, ...(p.sourceAddressPrefixes || [])].filter(Boolean);
+      const hasPort = ports.some((x) => x === "1443" || x === "*");
+      const hasSrc = srcs.some((x) => x === sensorCidr || x === "*");
+      return hasPort && hasSrc;
+    });
+    if (admits) {
+      log?.("Fleet NSG already admits 1443 from the sensor network — no rule added.");
+    } else {
+      const used = new Set(rules.map((r) => r.properties?.priority).filter(Boolean));
+      let prio = 110;
+      while (used.has(prio)) prio += 1;
+      const ruleName = `cqd-allow-1443-${sensorRg}`.toLowerCase().replace(/[^a-z0-9._-]/g, "-").slice(0, 78);
+      await armPut(await token(), `${ARM}${fleet.nsgId}/securityRules/${ruleName}?api-version=${NET_API}`, {
+        properties: {
+          priority: prio, direction: "Inbound", access: "Allow", protocol: "Tcp",
+          sourceAddressPrefix: sensorCidr, sourcePortRange: "*",
+          destinationAddressPrefix: "*", destinationPortRange: "1443",
+          description: "Corelight Quick Deploy: softsensor pairing (1443) from sensor VNet",
+        },
+      });
+      nsgRule = { nsgId: fleet.nsgId, ruleName };
+      log?.(`Opened Fleet NSG for 1443 from ${sensorCidr} (priority ${prio}).`);
+    }
+  } else if (!fleet.nsgId) {
+    log?.("No NSG found on the Fleet interface — skipping the 1443 rule (assuming it's already open).");
+  }
+  return { fleetPeering: { vnetId: fleet.vnetId, name: p2 }, nsgRule };
+}
+
+// Reverse peerSensorToFleet's FLEET-side changes on rollback. Best-effort; never throws.
+export async function unpeerFleet({ sessionId, created, log } = {}) {
+  const s = sessions.get(sessionId);
+  if (!s?.credential || !created) return;
+  const token = async () => (await s.credential.getToken(ARM_SCOPE)).token;
+  if (created.fleetPeering) {
+    try {
+      await armDelete(await token(), `${ARM}${created.fleetPeering.vnetId}/virtualNetworkPeerings/${created.fleetPeering.name}?api-version=${NET_API}`);
+      log?.("Removed Fleet→sensor VNet peering.");
+    } catch (e) { log?.(`(cleanup) peering delete: ${String(e?.message || e)}`); }
+  }
+  if (created.nsgRule) {
+    try {
+      await armDelete(await token(), `${ARM}${created.nsgRule.nsgId}/securityRules/${created.nsgRule.ruleName}?api-version=${NET_API}`);
+      log?.("Removed Fleet NSG 1443 rule.");
+    } catch (e) { log?.(`(cleanup) nsg rule delete: ${String(e?.message || e)}`); }
   }
 }

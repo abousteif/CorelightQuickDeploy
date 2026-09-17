@@ -7,6 +7,16 @@ output "fleet_deployed" {
   value = var.deploy_fleet
 }
 
+output "vnet_id" {
+  description = "Resource ID of the VNet this run created (used to peer to an existing Fleet's VNet)."
+  value       = azurerm_virtual_network.vnet.id
+}
+
+output "vnet_cidr" {
+  description = "Address space of the VNet this run created."
+  value       = var.vnet_cidr
+}
+
 output "fleet_public_ip" {
   description = "Public IP of the Fleet VM (empty when no Fleet was deployed)."
   value       = var.deploy_fleet ? azurerm_public_ip.fleet[0].ip_address : ""

@@ -1,8 +1,8 @@
 {
   "name": "corelightquickdeploy",
-  "version": "0.3.1",
+  "version": "0.8.0",
   "private": true,
-  "description": "Local one-button web app for Corelight SEs to deploy a Fleet Manager + N sensors into the cloud (Azure today; AWS planned).",
+  "description": "Local one-button web app for Corelight SEs to deploy a Fleet Manager + N sensors into the cloud (Azure or AWS).",
   "type": "module",
   "main": "electron/main.cjs",
   "scripts": {
@@ -15,6 +15,10 @@
     "app:build": "npm run build && node scripts/fetch-terraform.js && electron-builder"
   },
   "dependencies": {
+    "@aws-sdk/client-ec2": "^3.1134.0",
+    "@aws-sdk/client-sso": "^3.1134.0",
+    "@aws-sdk/client-sso-oidc": "^3.1134.0",
+    "@aws-sdk/client-sts": "^3.1134.0",
     "@azure/identity": "^4.13.3",
     "adm-zip": "^0.5.18",
     "express": "^4.21.2",

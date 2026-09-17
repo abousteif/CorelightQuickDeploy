@@ -19,7 +19,8 @@ body { margin: 0; background: var(--bg); color: var(--ink);
 code { background: #06121a; padding: 1px 5px; border-radius: 4px; font-size: 12px; }
 a { color: var(--accent); }
 
-.app { max-width: 1200px; margin: 0 auto; padding: 24px; }
+/* Fill the whole window — widening the app takes advantage of the extra screen space. */
+.app { width: 100%; margin: 0; padding: 24px; }
 .topbar { margin-bottom: 18px; padding-left: 14px; position: relative; }
 /* Brand stripe — a Corelight-green accent bar beside the title. */
 .topbar::before { content: ""; position: absolute; left: 0; top: 2px; bottom: 2px; width: 4px;
@@ -44,6 +45,7 @@ a { color: var(--accent); }
 .small { font-size: 12px; }
 .bad-text { color: var(--bad); }
 .warn { color: var(--warn); }
+.ok { color: var(--ok); }
 
 /* preflight */
 .pf-row { display: flex; align-items: center; gap: 10px; padding: 6px 0; border-top: 1px solid var(--border); }
@@ -87,6 +89,23 @@ details.subpanel[open] > summary { margin-bottom: 8px; }
 .btn.primary:hover { background: #00e588; border-color: #00e588; }
 .btn.primary:disabled { opacity: .6; cursor: default; }
 .btn.ghost { padding: 5px 10px; font-size: 12px; }
+.btn.danger { background: var(--bad); border-color: var(--bad); color: #1a0707; font-weight: 700; }
+.btn.danger:hover { background: #ff8585; border-color: #ff8585; }
+.btn.danger:disabled { opacity: .6; cursor: default; }
+/* The Deploy button turns into this while a run is live: red, "STOP" large with a small
+   "working…" subline so the operator can pull the plug (halt + delete) at any point. */
+.btn.stop { background: var(--bad); border-color: var(--bad); color: #1a0707; width: 100%;
+  display: flex; flex-direction: column; align-items: center; gap: 1px; line-height: 1.12; }
+.btn.stop:hover { background: #ff8585; border-color: #ff8585; }
+.btn.stop:disabled { opacity: .75; cursor: default; }
+.btn.stop .stop-main { font-weight: 800; letter-spacing: .09em; font-size: 15px; }
+.btn.stop .stop-sub { font-size: 10.5px; font-weight: 500; opacity: .8; }
+
+/* Failure-recovery rollback prompt — reddish border so it reads as a warning, not an action. */
+.rollback-card { border-color: var(--bad); }
+.rollback-card h2 { color: var(--bad); text-transform: none; letter-spacing: 0; font-size: 16px; }
+.rollback-card.ok { border-color: var(--ok); }
+.rollback-card.ok h2 { color: var(--ok); }
 
 /* inline select + button (e.g. resource-group picker + Refresh) */
 .row-inline { display: flex; gap: 8px; align-items: center; }
@@ -97,7 +116,7 @@ details.subpanel[open] > summary { margin-bottom: 8px; }
 .phase { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; }
 .phase.running::before { content: "● "; color: var(--accent); }
 .log { background: #06121a; border: 1px solid var(--border); border-radius: 8px; padding: 12px;
-  height: 520px; overflow-y: auto; overflow-x: hidden; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12.5px; }
+  height: 60vh; min-height: 360px; overflow-y: auto; overflow-x: hidden; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12.5px; }
 .log-line { display: flex; gap: 10px; padding: 1px 0; }
 .log-line .ts { color: #55617e; flex: none; }
 /* Wrap long lines (SSH keys, terraform IDs) instead of scrolling/widening. */

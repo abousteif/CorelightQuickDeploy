@@ -18,17 +18,9 @@ function genPassword() {
 // command output, not the script text).
 function repoFile(token) {
   const base = `https://${token}:@pkgrepos.corelight.cloud/corelight/fleet-stable`;
-  return `[corelight_fleet-stable_el_9]
-name=corelight_fleet-stable_el_9
-baseurl=${base}/el/9/$basearch
-repo_gpgcheck=1
-gpgcheck=0
-enabled=1
-gpgkey=${base}/gpgkey https://downloads.corelight.cloud/public/signing/corelight-package-signing-key.asc
-sslverify=1
-sslcacert=/etc/pki/tls/certs/ca-bundle.crt
-metadata_expire=300
-[corelight_fleet-stable_any]
+  // Matches the official Corelight Fleet Manager stable-repo instructions exactly: a single
+  // rpm_any stanza (the el/9 stanza we used before was the source of the repomd GPG error).
+  return `[corelight_fleet-stable_any]
 name=corelight_fleet-stable_any
 baseurl=${base}/rpm_any/rpm_any/$basearch
 repo_gpgcheck=1
@@ -40,9 +32,9 @@ sslcacert=/etc/pki/tls/certs/ca-bundle.crt
 metadata_expire=300`;
 }
 
-export async function bringUpFleet(run, emit) {
+export async function bringUpFleet(run, emit, profile = {}) {
   const host = run.outputs?.fleet_public_ip;
-  const username = run.form.adminUsername || "azureuser";
+  const username = profile.username || run.form.adminUsername || "azureuser";
   const { fleetRepoToken, communityString, pemPath } = run.secrets || {};
   const onLog = (l) => emit(run, "log", l);
   const phase = "fleet";
@@ -53,7 +45,8 @@ export async function bringUpFleet(run, emit) {
   if (!fleetRepoToken) throw new Error("Fleet bring-up: no Fleet repo token was provided");
 
   emit(run, "log", { level: "info", line: `Connecting to Fleet VM ${host}…`, phase });
-  const conn = await waitForSsh({ host, username, privateKeyPath: run.privateKeyPath, onLog });
+  const conn = await waitForSsh({ host, username, privateKeyPath: run.privateKeyPath, onLog, isAborted: () => run.aborted });
+  run.activeConns?.add(conn); // so a STOP can force-close this mid-step
 
   try {
     // 1–3: repo + install + community-string. `enabled` disabled here; start after PEM.
@@ -64,11 +57,19 @@ if [ ! -f /etc/yum.repos.d/corelight_fleet-stable.repo ]; then
   tee /etc/yum.repos.d/corelight_fleet-stable.repo >/dev/null <<'REPO'
 ${repoFile(fleetRepoToken)}
 REPO
-  dnf -q makecache || true
 fi
+# Pre-import the Corelight package signing key so repo_gpgcheck can verify the repo metadata
+# on a fresh VM — otherwise dnf reports "repomd.xml GPG signature verification error".
+rpm --import https://downloads.corelight.cloud/public/signing/corelight-package-signing-key.asc </dev/null || true
+echo "== dnf makecache =="
+dnf -y makecache </dev/null
 echo "== dnf install corelight-fleet =="
-dnf install -y corelight-fleet || true
+# stdin from /dev/null: this script is itself piped to bash on stdin, so without this dnf's
+# key-import prompt would read leftover script bytes as answers (the "Is this ok [y/N]" spam).
+dnf install -y corelight-fleet </dev/null
+# Fail loudly if the package didn't actually land — do NOT press on to PEM/start.
 rpm -q corelight-fleet
+id corelight-fleetd
 python3 - <<PY
 import json
 p='/etc/corelight-fleetd.conf'
@@ -109,14 +110,19 @@ systemctl is-active corelight-fleetd`,
     const adminPw = genPassword();
     emit(run, "log", { level: "info", line: "Creating admin user…", phase });
     const fleetd = "/usr/bin/corelight-fleetd -c /etc/corelight-fleetd.conf";
+    // The password is piped into reset-password on its OWN stdin (printf | cmd). This isolates
+    // it from the bash-script stdin — otherwise leftover input leaks back to bash and runs as a
+    // command (the "command not found" / exit 127 bug). printf is a shell builtin, so the
+    // password is never visible in `ps`, and the script text itself is delivered over SSH stdin
+    // (never logged). Two lines cover a build that asks to confirm; extras are discarded.
     code = await runScript(
       conn,
       `set -uo pipefail
+NEWPW='${adminPw}'
 # create-user is idempotent-ish: if admin exists it fails, which is fine — we reset next.
 sudo -u corelight-fleetd ${fleetd} create-user -a admin || echo "NOTE: admin may already exist; resetting password."
-# reset-password reads the new password twice from stdin (fed after this script).
-${fleetd} reset-password -p admin`,
-      { onLog, phase, input: `${adminPw}\n${adminPw}\n` }
+printf '%s\\n%s\\n' "$NEWPW" "$NEWPW" | ${fleetd} reset-password -p admin`,
+      { onLog, phase }
     );
     if (code !== 0) throw new Error(`admin user setup exited ${code}`);
 
@@ -124,6 +130,7 @@ ${fleetd} reset-password -p admin`,
     run.fleetAdmin = { user: "admin", password: adminPw };
     emit(run, "log", { level: "success", line: "Fleet Manager is up — admin user ready.", phase });
   } finally {
+    run.activeConns?.delete(conn);
     try { conn.end(); } catch {}
   }
 }

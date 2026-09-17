@@ -34,15 +34,15 @@ metadata_expire=300`;
 
 // corelightctl.yaml. JSON.stringify each scalar → valid double-quoted YAML (handles any
 // characters in the license/token safely).
-function corelightctlYaml({ communityString, licenseKey, pairing }) {
+function corelightctlYaml({ communityString, licenseKey, pairing, mgmtIface = "eth0", monitorIface = "eth1" }) {
   return `sensor:
   api:
     password: ${JSON.stringify(communityString || "corelight")}
   license_key: ${JSON.stringify(licenseKey || "")}
   management_interface:
-    - name: "eth0"
+    - name: ${JSON.stringify(mgmtIface)}
   monitoring_interface:
-    name: "eth1"
+    name: ${JSON.stringify(monitorIface)}
   pairing:
     token: ${JSON.stringify(pairing.token)}
     server_sslname: ${JSON.stringify(pairing.server_sslname)}
@@ -65,12 +65,14 @@ async function deployWithReboot(run, emit, sensor, connectSensor) {
     // First deploy commonly exits nonzero after masking cloud units / sysctl — needs a reboot.
     emit(run, "log", { level: "info", line: `[${sensor.name}] deploy requested a reboot — rebooting and retrying…`, phase });
     await reboot(conn);
+    run.activeConns?.delete(conn);
     try { conn.end(); } catch {}
 
     conn = await connectSensor();
     code = await runScript(conn, "set -uo pipefail\ncorelightctl sensor deploy -v", { onLog, phase });
     if (code !== 0) throw new Error(`[${sensor.name}] sensor deploy failed after reboot (exit ${code})`);
   } finally {
+    run.activeConns?.delete(conn);
     try { conn.end(); } catch {}
   }
 }
@@ -89,7 +91,7 @@ function reboot(conn) {
   });
 }
 
-export async function bringUpSensors(run, emit, fleetCtx) {
+export async function bringUpSensors(run, emit, fleetCtx, profile = {}) {
   const phase = "sensor";
   const onLog = (l) => emit(run, "log", l);
   const sensors = Array.isArray(run.outputs?.sensors) ? run.outputs.sensors : [];
@@ -119,7 +121,9 @@ export async function bringUpSensors(run, emit, fleetCtx) {
     return createSensor(apiBase, cookies, name);
   };
 
-  const username = run.form.adminUsername || "azureuser";
+  const username = profile.username || run.form.adminUsername || "azureuser";
+  const mgmtIface = profile.mgmtIface || "eth0";
+  const monitorIface = profile.monitorIface || "eth1";
   const sensorRepoToken = run.secrets?.sensorRepoToken;
   if (!sensorRepoToken) throw new Error("Sensor bring-up requires the sensor (BYOL) repo token");
   const licenseKey = run.secrets?.licensePath ? readFileSync(run.secrets.licensePath, "utf8").trim() : "";
@@ -127,6 +131,7 @@ export async function bringUpSensors(run, emit, fleetCtx) {
 
   run.sensorResults = [];
   for (let i = 0; i < sensors.length; i++) {
+    if (run.aborted) throw new Error("Sensor bring-up stopped by user.");
     const sensor = sensors[i];
     emit(run, "log", { level: "info", line: `=== ${sensor.name} (${sensor.public_ip}) ===`, phase });
 
@@ -137,10 +142,16 @@ export async function bringUpSensors(run, emit, fleetCtx) {
       communityString,
       licenseKey,
       pairing: { token: pairing.tethering_token, server_sslname: pairing.server_sslname, url: pairingUrl },
+      mgmtIface,
+      monitorIface,
     });
 
     // 2. Connect + install + configure. (deploy uses its own reconnect for the reboot.)
-    const connectSensor = () => waitForSsh({ host: sensor.public_ip, username, privateKeyPath: run.privateKeyPath, onLog });
+    const connectSensor = async () => {
+      const c = await waitForSsh({ host: sensor.public_ip, username, privateKeyPath: run.privateKeyPath, onLog, isAborted: () => run.aborted });
+      run.activeConns?.add(c); // so a STOP can force-close this mid-step
+      return c;
+    };
     const conn = await connectSensor();
     try {
       emit(run, "log", { level: "info", line: `[${sensor.name}] installing corelight-sensor (~6 GB, several min)…`, phase });
@@ -149,10 +160,15 @@ if [ ! -f /etc/yum.repos.d/corelight_sensor-stable.repo ]; then
   tee /etc/yum.repos.d/corelight_sensor-stable.repo >/dev/null <<'REPO'
 ${repoFile(sensorRepoToken)}
 REPO
-  dnf -q makecache || true
 fi
+# Pre-import the Corelight signing key so repo_gpgcheck can verify repo metadata on a fresh VM.
+rpm --import https://downloads.corelight.cloud/public/signing/corelight-package-signing-key.asc </dev/null || true
+echo "== dnf makecache =="
+dnf -y makecache </dev/null
 echo "== dnf install corelight-sensor =="
-dnf install -y corelight-sensor
+# stdin from /dev/null: the script is piped to bash on stdin, so keep dnf's prompts off it.
+dnf install -y corelight-sensor </dev/null
+rpm -q corelight-sensor
 corelightctl version || true
 mkdir -p /etc/corelight
 cat > /etc/corelight/corelightctl.yaml <<'YAML'
@@ -162,6 +178,7 @@ echo "corelightctl.yaml written"`;
       const code = await runScript(conn, install, { onLog, phase });
       if (code !== 0) throw new Error(`[${sensor.name}] install/config exited ${code}`);
     } finally {
+      run.activeConns?.delete(conn);
       try { conn.end(); } catch {}
     }
 
@@ -174,6 +191,7 @@ echo "corelightctl.yaml written"`;
       emit(run, "log", { level: "info", line: `[${sensor.name}] sensor status…`, phase });
       await runScript(vconn, "corelightctl sensor status || true", { onLog, phase });
     } finally {
+      run.activeConns?.delete(vconn);
       try { vconn.end(); } catch {}
     }
 
