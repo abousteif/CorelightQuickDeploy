@@ -29,7 +29,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
 
       # Root deps carry everything electron-builder bundles (Node resolves the server's
       # bare imports from root node_modules); web deps are needed for the Vite build.
@@ -39,8 +39,10 @@ jobs:
           npm --prefix web install --no-audit --no-fund
 
       # build UI -> fetch the per-OS Terraform binary -> electron-builder (current OS target).
+      # --publish never: we attach artifacts via the release step below, so electron-builder
+      # must NOT try to publish itself (it otherwise demands a GH_TOKEN in CI and fails).
       - name: Build app
-        run: npm run app:build
+        run: npm run app:build -- --publish never
         env:
           # Unsigned builds: don't let electron-builder hunt for a signing identity.
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
