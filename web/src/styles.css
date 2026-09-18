@@ -47,13 +47,26 @@ a { color: var(--accent); }
 .warn { color: var(--warn); }
 .ok { color: var(--ok); }
 
-/* preflight */
-.pf-row { display: flex; align-items: center; gap: 10px; padding: 6px 0; border-top: 1px solid var(--border); }
-.pf-row:first-of-type { border-top: none; }
-.pf-dot { width: 10px; height: 10px; border-radius: 50%; flex: none; }
-.pf-dot.ok { background: var(--ok); } .pf-dot.bad { background: var(--bad); }
-.pf-label { width: 120px; flex: none; color: var(--muted); }
-.pf-detail { flex: 1; }
+/* precheck — three compact readiness chips (Auth · Access · Capacity) */
+.precheck { padding: 14px 16px; }
+.precheck-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+.precheck-title { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+.chips { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+@media (max-width: 560px) { .chips { grid-template-columns: 1fr; } }
+.chip { background: var(--card-2); border: 1px solid var(--border); border-left-width: 3px;
+  border-radius: 8px; padding: 9px 11px; min-width: 0; }
+.chip-head { display: flex; align-items: center; gap: 7px; }
+.chip-ico { font-size: 9px; line-height: 1; flex: none; }
+.chip-title { font-size: 12px; font-weight: 700; letter-spacing: .01em; }
+.chip-line { font-size: 12px; color: var(--ink); margin-top: 3px; overflow-wrap: anywhere; }
+.chip-fix { font-size: 11px; color: var(--muted); margin-top: 2px; overflow-wrap: anywhere; }
+/* states: green ok, amber warn (grows the fix line), dim todo, pulsing checking */
+.chip.ok { border-left-color: var(--ok); } .chip.ok .chip-ico { color: var(--ok); }
+.chip.warn { border-left-color: var(--warn); } .chip.warn .chip-ico { color: var(--warn); }
+.chip.warn .chip-fix { color: var(--warn); }
+.chip.todo { opacity: .55; border-left-color: var(--border); } .chip.todo .chip-ico { color: var(--muted); }
+.chip.checking { border-left-color: var(--accent); } .chip.checking .chip-ico { color: var(--accent); animation: chip-pulse 1s ease-in-out infinite; }
+@keyframes chip-pulse { 0%,100% { opacity: 1; } 50% { opacity: .3; } }
 
 /* form */
 .field { display: flex; flex-direction: column; gap: 4px; margin-bottom: 12px; }

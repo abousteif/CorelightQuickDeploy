@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import Preflight from "./components/Preflight.jsx";
+import Precheck from "./components/Precheck.jsx";
 import DeployForm from "./components/DeployForm.jsx";
 import LogPanel from "./components/LogPanel.jsx";
 import RollbackPrompt from "./components/RollbackPrompt.jsx";
@@ -516,7 +516,20 @@ export default function App() {
 
       <main className="layout">
         <div className="col">
-          <Preflight data={pf} loading={pfLoading} onRefresh={loadPreflight} />
+          <Precheck
+            cloud={form.cloud}
+            pf={pf}
+            loading={pfLoading}
+            onRefresh={loadPreflight}
+            azure={azure}
+            aws={aws}
+            awsSso={awsSso}
+            form={form}
+            vmSizes={vmSizes}
+            awsInstanceTypes={awsInstanceTypes}
+            regionLabel={form.cloud === "aws" ? form.awsRegion : targetLocation}
+            subName={(azure.subscriptions.find((s) => s.subscriptionId === form.subscriptionId)?.displayName) || form.subscriptionId}
+          />
           <DeployForm form={form} setField={setField} onDeploy={onDeploy} running={running} stopping={stopping} onStop={onStop} azure={azure} onAzureLogin={startAzureLogin} rgs={rgs} onLoadResourceGroups={loadResourceGroups} vmSizes={vmSizes} onLoadVmSizes={loadVmSizes} aws={aws} onValidateAws={validateAws} awsRegions={awsRegions} onLoadAwsRegions={loadAwsRegions} awsInstanceTypes={awsInstanceTypes} onLoadAwsInstanceTypes={loadAwsInstanceTypes} awsSso={awsSso} onAwsSsoLogin={startAwsSso} onSelectAwsRole={selectAwsRole} fleetPeer={fleetPeer} onDiscoverFleet={discoverFleet} onConfirmPeer={confirmPeer} onCancelPeer={cancelPeer} />
         </div>
         <div className="col">
