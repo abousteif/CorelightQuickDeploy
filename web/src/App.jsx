@@ -19,7 +19,11 @@ export default function App() {
     // have it, they create the RG in Azure and hit Refresh.
     useExistingRg: true,
     existingRgName: "",
+    // Shared across clouds: base name for resources + an optional customer tag (Key=Value).
+    namePrefix: DEFAULTS.namePrefix,
+    resourceTag: "",
     region: DEFAULTS.region,
+    vnetCidr: DEFAULTS.vnetCidr,
     fleetVmSize: DEFAULTS.fleetVmSize,
     sensorVmSize: DEFAULTS.sensorVmSize,
     sensorCount: DEFAULTS.sensorCount,
@@ -389,6 +393,8 @@ export default function App() {
       // Fields shared by every cloud (Fleet/sensor bring-up, tokens, licensing).
       const shared = {
         cloud: form.cloud,
+        namePrefix: form.namePrefix,
+        resourceTag: form.resourceTag,
         fleetVmSize: form.fleetVmSize,
         sensorVmSize: form.sensorVmSize,
         sensorCount: Number(form.sensorCount),
@@ -425,6 +431,7 @@ export default function App() {
             useExistingRg: form.useExistingRg,
             existingRgName: form.existingRgName,
             region: form.region,
+            vnetCidr: form.vnetCidr,
             azureSessionId: form.azureSessionId,
             // Sensors-only peering to an existing (private) Fleet, if the operator set it up.
             peerToFleet: form.peerToFleet,

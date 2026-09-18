@@ -29,6 +29,27 @@ const RUNS_DIR = process.env.CQD_RUNS_DIR || join(appRoot, "runs");
 // (the Fleet DNS label + the service-principal name), not in the readable resource names.
 const RESOURCE_PREFIX = "corelight";
 
+// The customer can choose what resource names begin with (default "corelight"), yielding
+// corelight-fleet / corelight-sensor-1. Sanitize to a DNS/cloud-safe token: lowercase,
+// [a-z0-9-] only, no leading/trailing/repeated dashes. Falls back to the default if empty.
+function sanitizePrefix(raw) {
+  const s = String(raw || "").trim().toLowerCase()
+    .replace(/[^a-z0-9-]+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  return s || RESOURCE_PREFIX;
+}
+
+// Optional single free-form tag the customer may add, entered as "Key=Value" (or "Key:Value").
+// Returns {} when blank or unparseable, so a bad entry never blocks a deploy.
+function parseResourceTag(raw) {
+  const m = /^\s*([^=:]+?)\s*[=:]\s*(.+?)\s*$/.exec(String(raw || ""));
+  if (!m) return {};
+  const key = m[1].trim();
+  const val = m[2].trim();
+  return key ? { [key]: val } : {};
+}
+
 // In-memory registry of runs for this process. A run outlives the POST that creates it;
 // the SSE GET attaches to it and triggers execution.
 const runs = new Map();
@@ -72,8 +93,12 @@ function existingFleetCtx(form) {
 export function createRun(form) {
   const id = newId();
   const provider = getProvider(form.cloud); // throws on an unknown cloud
-  // Unique id used for the SP name + Fleet DNS label (readable resource names use RESOURCE_PREFIX).
-  const namePrefix = `${RESOURCE_PREFIX}-${id}`;
+  // Customer-chosen base for readable resource names (corelight-fleet, corelight-sensor-1).
+  const namePrefix = sanitizePrefix(form.namePrefix);
+  // Run-scoped unique name kept only where uniqueness is required (Azure SP name + Fleet DNS
+  // label, AWS key pair) — never in the readable resource names the operator sees.
+  const uniqueName = `${namePrefix}-${id}`;
+  const extraTags = parseResourceTag(form.resourceTag);
   const dir = join(RUNS_DIR, id);
   const tfDir = join(dir, "tf");
   const sshDir = join(dir, "ssh");
@@ -103,11 +128,13 @@ export function createRun(form) {
     id,
     provider,
     namePrefix,
+    uniqueName,
+    extraTags,
     dir,
     tfDir,
     sshDir,
     secrets,
-    form: { ...formRest, namePrefix },
+    form: { ...formRest, namePrefix, uniqueName },
     dryRun: !!form.dryRun,
     status: "created",
     started: false,
@@ -123,7 +150,7 @@ export function createRun(form) {
     executePromise: null,
   };
   runs.set(id, run);
-  return { id, namePrefix };
+  return { id, namePrefix, uniqueName };
 }
 
 export function getRun(id) {
@@ -201,7 +228,7 @@ async function execute(run) {
     const { publicKey, privateKeyPath } = generateKeypair(run.sshDir);
     run.privateKeyPath = privateKeyPath;
 
-    const tfvars = run.provider.toTfvars(run.form, publicKey, { namePrefix: run.namePrefix, resourcePrefix: RESOURCE_PREFIX });
+    const tfvars = run.provider.toTfvars(run.form, publicKey, { namePrefix: run.namePrefix, uniqueName: run.uniqueName, nameSuffix: run.id, extraTags: run.extraTags, resourcePrefix: RESOURCE_PREFIX });
     writeFileSync(join(run.tfDir, "terraform.tfvars.json"), JSON.stringify(tfvars, null, 2));
     emit(run, "log", {
       level: "info",

@@ -90,6 +90,21 @@ export default function DeployForm({
         </div>
       </Field>
 
+      {/* ---------------- Shared: resource naming + optional tag ---------------- */}
+      <Field label="Name prefix" hint="What every resource name begins with. Leave the default or set your own.">
+        <input value={form.namePrefix} onChange={set("namePrefix")} placeholder="corelight" />
+      </Field>
+      <p className="muted small" style={{ marginTop: "-6px" }}>
+        {(() => {
+          const p = (form.namePrefix || "corelight").trim().toLowerCase().replace(/[^a-z0-9-]+/g, "-").replace(/-+/g, "-").replace(/^-+|-+$/g, "") || "corelight";
+          return <>Resources will be named <code>{p}-fleet</code>, <code>{p}-sensor-1</code>, …</>;
+        })()}
+      </p>
+
+      <Field label="Tag (optional)" hint="Adds a tag to every resource, e.g. owner=jsmith or project=poc. Leave empty to skip.">
+        <input value={form.resourceTag} onChange={set("resourceTag")} placeholder="Key=Value" />
+      </Field>
+
       {/* ---------------- Cloud-specific: auth + placement ---------------- */}
       {isAzure && (
         <>
@@ -135,6 +150,10 @@ export default function DeployForm({
           </Field>
           {rgs.error && <p className="warn small">⚠ {rgs.error}</p>}
           {!rgs.loading && !rgs.error && rgs.list.length === 0 && <p className="muted small">No resource groups found — check the subscription, or sign in / <code>az login</code>, then Refresh.</p>}
+
+          <Field label="VNet CIDR" hint="Address space for the new sensor VNet — sensors land in the first /24 of this range (e.g. 10.50.0.0/24). Change it if it overlaps your existing networks.">
+            <input value={form.vnetCidr} onChange={set("vnetCidr")} placeholder="10.50.0.0/16" />
+          </Field>
         </>
       )}
 
@@ -294,7 +313,7 @@ export default function DeployForm({
       ) : (
         <div className="subpanel">
           <p className="muted small">Existing Fleet — sensors will pair to it. The pairing address is what the sensors reach (its <code>:1443</code>); the REST API is that host on <code>:443</code>.</p>
-          <Field label="Fleet pairing address (host:port)" hint="Must be reachable from the new sensor network — use the Fleet's public FQDN/IP, not its internal container address."><input value={form.existingFleetAddr} onChange={set("existingFleetAddr")} placeholder="fleet.example.com:1443" /></Field>
+          <Field label="Fleet pairing address (host:port)" hint="Must be reachable from the new sensor network — a public FQDN/IP, or a private one if routing (peering/VPN) is already in place."><input value={form.existingFleetAddr} onChange={set("existingFleetAddr")} placeholder="fleet.example.com:1443" /></Field>
           {fleetAddrPrivate && !form.peerToFleet && (
             <p className="warn small">
               ⚠ <strong>{fleetHost}</strong> is a private address. Sensors deploy into a new, isolated {isAws ? "VPC" : "VNet"}, so they usually can’t route to a private Fleet IP

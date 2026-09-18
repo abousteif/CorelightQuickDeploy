@@ -9,6 +9,12 @@ variable "name_prefix" {
   default     = "corelight"
 }
 
+variable "name_suffix" {
+  type        = string
+  description = "Optional run-id suffix appended only to the EC2 key pair name (which must be unique per account/region)."
+  default     = ""
+}
+
 variable "ssh_public_key" {
   type        = string
   description = "OpenSSH public key material authorized on every instance (the deployer generates a per-run keypair)."

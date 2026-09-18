@@ -20,6 +20,8 @@ export const VM_SIZES = [
 
 export const DEFAULTS = {
   cloud: "azure",
+  // Base for readable resource names (→ corelight-fleet, corelight-sensor-1); customer-editable.
+  namePrefix: "corelight",
   region: "centralus",
   // Pre-load fallback only — once Azure sizes are polled, both default to the smallest available.
   fleetVmSize: "Standard_D4s_v3",

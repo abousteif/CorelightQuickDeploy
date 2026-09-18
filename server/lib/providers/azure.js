@@ -10,6 +10,13 @@ import { moduleDirFor } from "./tfpaths.js";
 // Human-friendly base for resource names (VMs, NICs, …) → corelight-fleet, corelight-sensor-1.
 const RESOURCE_PREFIX = "corelight";
 
+// The first /24 inside a VNet CIDR (the sensor subnet). 10.50.0.0/16 → 10.50.0.0/24.
+// Returns null on anything that isn't a plain dotted-quad CIDR so callers fall back to the default.
+function firstSlash24(cidr) {
+  const m = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.\d{1,3}\/\d{1,2}$/.exec((cidr || "").trim());
+  return m ? `${m[1]}.${m[2]}.${m[3]}.0/24` : null;
+}
+
 export default {
   id: "azure",
 
@@ -27,28 +34,32 @@ export default {
   },
 
   // Build the tfvars object the Azure module expects from the validated form.
-  toTfvars(form, publicKey /*, ctx */) {
+  toTfvars(form, publicKey, ctx = {}) {
     const cidrs = (form.adminSourceCidrs && form.adminSourceCidrs.length)
       ? form.adminSourceCidrs
       : (form.publicIp ? [`${form.publicIp}/32`] : []);
     return {
       subscription_id: form.subscriptionId,
       location: form.region,
-      // Readable resource names: corelight-fleet, corelight-sensor-1, …
-      name_prefix: RESOURCE_PREFIX,
+      // Readable resource names from the customer-chosen base: corelight-fleet, corelight-sensor-1, …
+      name_prefix: ctx.namePrefix || RESOURCE_PREFIX,
+      // Base managed-by tag + any optional tag the customer added.
+      tags: { "managed-by": "corelight-quick-deploy", ...(ctx.extraTags || {}) },
       use_existing_rg: !!form.useExistingRg,
       existing_rg_name: form.useExistingRg ? (form.existingRgName || "") : "",
       admin_username: form.adminUsername || "azureuser",
       ssh_public_key: publicKey,
       admin_source_cidrs: cidrs,
       vnet_cidr: form.vnetCidr || "10.50.0.0/16",
-      subnet_cidr: form.subnetCidr || "10.50.0.0/24",
+      // Keep the sensor subnet inside whatever VNet CIDR the operator chose: the first /24 of
+      // that range (e.g. 10.50.0.0/16 → 10.50.0.0/24). An explicit subnetCidr still wins.
+      subnet_cidr: form.subnetCidr || firstSlash24(form.vnetCidr) || "10.50.0.0/24",
       fleet_vm_size: form.fleetVmSize || "Standard_D4s_v3",
       sensor_vm_size: form.sensorVmSize || "Standard_D4s_v3",
       deploy_fleet: form.deployFleet !== false,
       sensor_count: Number(form.sensorCount || 1),
       // The public FQDN must be globally unique, so it (unlike the VM names) keeps the run id.
-      fleet_dns_label: form.deployFleet !== false ? `${form.namePrefix}-fleet` : "",
+      fleet_dns_label: form.deployFleet !== false ? `${form.uniqueName || form.namePrefix}-fleet` : "",
     };
   },
 
@@ -69,7 +80,7 @@ export default {
     emit(run, "log", { level: "info", line: "Authenticating to Azure (creating a scoped service principal)…" });
     try {
       const creds = await provisionServicePrincipal(run.form.azureSessionId, run.form.subscriptionId, {
-        displayName: run.namePrefix,
+        displayName: run.uniqueName || run.namePrefix,
         log: (line) => emit(run, "log", { level: "info", line }),
       });
       const env = {

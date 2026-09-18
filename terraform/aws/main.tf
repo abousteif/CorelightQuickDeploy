@@ -159,9 +159,10 @@ resource "aws_security_group" "monitor" {
   }
 }
 
-# Per-run SSH key (the backend generates the keypair).
+# Per-run SSH key (the backend generates the keypair). The key pair name must be unique per
+# account/region, so it carries the run-id suffix even though other resource names stay clean.
 resource "aws_key_pair" "deploy" {
-  key_name   = "${var.name_prefix}-key"
+  key_name   = var.name_suffix != "" ? "${var.name_prefix}-${var.name_suffix}-key" : "${var.name_prefix}-key"
   public_key = var.ssh_public_key
   tags       = var.tags
 }

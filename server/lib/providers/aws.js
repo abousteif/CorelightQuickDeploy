@@ -35,10 +35,13 @@ export default {
       : (form.publicIp ? [`${form.publicIp}/32`] : []);
     return {
       region: form.region,
-      // AWS has no resource-group isolation like Azure, so names must be unique per run to avoid
-      // collisions (e.g. the key pair name) across concurrent or repeated deploys → use the
-      // run-scoped prefix (corelight-<runid>), falling back to the static prefix.
+      // Readable resource names from the customer-chosen base: corelight-fleet, corelight-sensor-1.
       name_prefix: ctx.namePrefix || RESOURCE_PREFIX,
+      // AWS has no resource-group isolation, so the one name that MUST be unique per account/region
+      // — the EC2 key pair — carries the run id as a suffix (the rest stay clean/readable).
+      name_suffix: ctx.nameSuffix || "",
+      // Base managed-by tag + any optional tag the customer added.
+      tags: { "managed-by": "corelight-quick-deploy", ...(ctx.extraTags || {}) },
       admin_username: form.adminUsername || "ec2-user",
       ssh_public_key: publicKey,
       admin_source_cidrs: cidrs,
